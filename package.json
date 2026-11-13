@@ -1,0 +1,9 @@
+{
+  "name": "ai-customer-support-evaluator",
+  "version": "1.0.0",
+  "description": "A rule-based evaluator for checking AI customer-support responses against verified business context.",
+  "type": "module",
+  "scripts": {
+    "test": "node --test"
+  }
+}
