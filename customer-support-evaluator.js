@@ -297,6 +297,7 @@ export function evaluateRefundPromise(response, context) {
     evidence
   );
 }
+
 export function evaluateTrackingInstruction(response, context) {
   if (!response || typeof response !== "string") {
     throw new TypeError("A valid AI response is required.");
@@ -319,26 +320,44 @@ export function evaluateTrackingInstruction(response, context) {
     .filter(Boolean);
 
   let lastIndex = -1;
+  const evidence = [];
 
-  const includesVerifiedPath = trackingSteps.every((step) => {
+  for (const step of trackingSteps) {
     const currentIndex = response
       .toLowerCase()
       .indexOf(step.toLowerCase(), lastIndex + 1);
 
     if (currentIndex === -1) {
-      return false;
+      break;
     }
 
+    evidence.push({
+      claimType: "tracking_step",
+      claimedValue: step,
+      verifiedValue: step,
+      verifiedField: "tracking_path",
+      verifiedSource: null,
+      responseExcerpt: response.slice(
+        currentIndex,
+        currentIndex + step.length
+      ),
+      startIndex: currentIndex,
+      endIndex: currentIndex + step.length
+    });
+
     lastIndex = currentIndex;
-    return true;
-  });
+  }
+
+  const includesVerifiedPath = evidence.length === trackingSteps.length;
 
   return createResult(
     "verified_tracking_instruction",
     includesVerifiedPath,
     includesVerifiedPath
       ? "The response includes the verified refund tracking path."
-      : "The response does not include the verified refund tracking path."
+      : "The response does not include the verified refund tracking path.",
+    undefined,
+    evidence
   );
 }
 

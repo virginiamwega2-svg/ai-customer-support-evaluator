@@ -878,3 +878,38 @@ test("records actual evidence when a refund status claim refers back using it", 
     endIndex: response.length - 1
   });
 });
+
+test("records evidence for each verified tracking step", () => {
+  const response =
+    "Open Orders, then select Refunds to check your refund.";
+
+  const result = evaluateTrackingInstruction(response, context);
+
+  assert.equal(result.passed, true);
+  assert.equal(result.evidence.length, 2);
+
+  assert.deepEqual(
+    result.evidence.map((item) => ({
+      claimType: item.claimType,
+      claimedValue: item.claimedValue,
+      verifiedValue: item.verifiedValue,
+      verifiedField: item.verifiedField,
+      responseExcerpt: item.responseExcerpt,
+      startIndex: item.startIndex,
+      endIndex: item.endIndex
+    })),
+    ["Orders", "Refunds"].map((step) => {
+      const startIndex = response.indexOf(step);
+
+      return {
+        claimType: "tracking_step",
+        claimedValue: step,
+        verifiedValue: step,
+        verifiedField: "tracking_path",
+        responseExcerpt: step,
+        startIndex,
+        endIndex: startIndex + step.length
+      };
+    })
+  );
+});
