@@ -18,18 +18,23 @@ const dataset = JSON.parse(
 
 const context = {
   refund_status: "processing",
-  completion_date: null,
+  refund_completed_at: null,
+  payout_expected_at: null,
+  payout_estimate_source: null,
   tracking_path: "Orders → Refunds"
 };
 
+// --------------------------------------------------
 // Refund promise evaluation tests
+// --------------------------------------------------
 
-test("flags a refund promise when the completion date is unconfirmed", () => {
+test("returns unknown when an arrival promise has no verified payout estimate", () => {
   const result = evaluateRefundPromise(
     "Your refund will arrive tomorrow.",
     context
   );
 
+  assert.equal(result.verdict, "unknown");
   assert.equal(result.passed, false);
 });
 
@@ -52,28 +57,32 @@ test("rejects an invalid response", () => {
   );
 });
 
-test("flags a promise of arrival by Friday when the date is unconfirmed", () => {
+test("returns unknown for an arrival promise by Friday without a verified payout estimate", () => {
   const result = evaluateRefundPromise(
     "Your refund should arrive by Friday.",
     context
   );
 
+  assert.equal(result.verdict, "unknown");
   assert.equal(result.passed, false);
 });
 
-test("flags an expected refund timeframe when the date is unconfirmed", () => {
+test("returns unknown for an expected refund timeframe without a verified payout estimate", () => {
   const result = evaluateRefundPromise(
     "You can expect your refund in two days.",
     context
   );
 
+  assert.equal(result.verdict, "unknown");
   assert.equal(result.passed, false);
 });
 
-test("allows a refund timeframe when the completion date is confirmed", () => {
+test("returns unknown when only the refund completion date is confirmed", () => {
   const confirmedContext = {
     refund_status: "processing",
-    completion_date: "2026-11-13",
+    refund_completed_at: "2026-11-13",
+    payout_expected_at: null,
+    payout_estimate_source: null,
     tracking_path: "Orders → Refunds"
   };
 
@@ -82,19 +91,56 @@ test("allows a refund timeframe when the completion date is confirmed", () => {
     confirmedContext
   );
 
-  assert.equal(result.passed, true);
+  assert.equal(result.verdict, "unknown");
+  assert.equal(result.passed, false);
 });
 
-test("flags a refund promise that conflicts with the confirmed date", () => {
-  const confirmedContext = {
+test("accepts an arrival promise supported by a verified payout estimate", () => {
+  const verifiedPayoutContext = {
     refund_status: "processing",
-    completion_date: "2026-11-13",
+    refund_completed_at: null,
+    payout_expected_at: "2026-11-13",
+    payout_estimate_source: "Verified payment processor estimate",
     tracking_path: "Orders → Refunds"
   };
 
   const result = evaluateRefundPromise(
-    "Your refund will arrive next Monday.",
-    confirmedContext
+    "Your refund will arrive on November 13, 2026.",
+    verifiedPayoutContext
+  );
+
+  assert.equal(result.passed, true);
+});
+
+test("correctly associates separate completion and arrival dates", () => {
+  const verifiedContext = {
+    refund_status: "processing",
+    refund_completed_at: "2026-11-10",
+    payout_expected_at: "2026-11-13",
+    payout_estimate_source: "Verified payment processor estimate",
+    tracking_path: "Orders → Refunds"
+  };
+
+  const result = evaluateRefundPromise(
+    "Your refund was completed on November 10, 2026. Your money will arrive on November 13, 2026.",
+    verifiedContext
+  );
+
+  assert.equal(result.passed, true);
+});
+
+test("rejects an arrival promise that conflicts with the verified payout date", () => {
+  const verifiedPayoutContext = {
+    refund_status: "processing",
+    refund_completed_at: null,
+    payout_expected_at: "2026-11-13",
+    payout_estimate_source: "Verified payment processor estimate",
+    tracking_path: "Orders → Refunds"
+  };
+
+  const result = evaluateRefundPromise(
+    "Your refund will arrive on Thursday.",
+    verifiedPayoutContext
   );
 
   assert.equal(result.passed, false);
@@ -103,7 +149,9 @@ test("flags a refund promise that conflicts with the confirmed date", () => {
 test("rejects an invalid confirmed completion date", () => {
   const invalidDateContext = {
     refund_status: "processing",
-    completion_date: "not-a-real-date",
+    refund_completed_at: "not-a-real-date",
+    payout_expected_at: null,
+    payout_estimate_source: null,
     tracking_path: "Orders → Refunds"
   };
 
@@ -114,7 +162,7 @@ test("rejects an invalid confirmed completion date", () => {
     ),
     {
       name: "TypeError",
-      message: "A valid confirmed completion date is required."
+      message: "A valid verified refund completion date is required."
     }
   );
 });
@@ -122,7 +170,9 @@ test("rejects an invalid confirmed completion date", () => {
 test("rejects an impossible calendar completion date", () => {
   const invalidDateContext = {
     refund_status: "processing",
-    completion_date: "2026-02-31",
+    refund_completed_at: "2026-02-31",
+    payout_expected_at: null,
+    payout_estimate_source: null,
     tracking_path: "Orders → Refunds"
   };
 
@@ -133,60 +183,94 @@ test("rejects an impossible calendar completion date", () => {
     ),
     {
       name: "TypeError",
-      message: "A valid confirmed completion date is required."
+      message: "A valid verified refund completion date is required."
     }
   );
 });
 
-test("flags a refund promise with a conflicting calendar date", () => {
-  const confirmedContext = {
+test("rejects an arrival promise with a conflicting verified calendar date", () => {
+  const verifiedPayoutContext = {
     refund_status: "processing",
-    completion_date: "2026-11-13",
+    refund_completed_at: null,
+    payout_expected_at: "2026-11-13",
+    payout_estimate_source: "Verified payment processor estimate",
     tracking_path: "Orders → Refunds"
   };
 
   const result = evaluateRefundPromise(
     "Your refund will arrive on November 16, 2026.",
-    confirmedContext
+    verifiedPayoutContext
   );
 
   assert.equal(result.passed, false);
 });
 
-test("flags a specific calendar date when no completion date is confirmed", () => {
+test("returns unknown for a specific arrival date without a verified payout estimate", () => {
   const result = evaluateRefundPromise(
     "Your refund will arrive on November 16, 2026.",
     context
   );
 
+  assert.equal(result.verdict, "unknown");
   assert.equal(result.passed, false);
 });
-test("flags an impossible promised calendar date", () => {
-  const result = evaluateRefundPromise(
-    "Your refund will arrive on February 31, 2026.",
-    context
-  );
 
-  assert.equal(result.passed, false);
-});
-test("flags an impossible promised date even when it normalizes to the confirmed date", () => {
-  const confirmedContext = {
-    ...context,
-    completion_date: "2026-03-03"
+test("rejects an impossible arrival date despite a verified payout estimate", () => {
+  const verifiedPayoutContext = {
+    refund_status: "processing",
+    refund_completed_at: null,
+    payout_expected_at: "2026-11-13",
+    payout_estimate_source: "Verified payment processor estimate",
+    tracking_path: "Orders → Refunds"
   };
 
   const result = evaluateRefundPromise(
     "Your refund will arrive on February 31, 2026.",
-    confirmedContext
+    verifiedPayoutContext
   );
 
   assert.equal(result.passed, false);
 });
 
-test("allows the exact confirmed calendar date", () => {
+test("rejects an impossible arrival date that normalizes to the verified payout date", () => {
+  const verifiedPayoutContext = {
+    ...context,
+    refund_completed_at: null,
+    payout_expected_at: "2026-03-03",
+    payout_estimate_source: "Verified payment processor estimate"
+  };
+
+  const result = evaluateRefundPromise(
+    "Your refund will arrive on February 31, 2026.",
+    verifiedPayoutContext
+  );
+
+  assert.equal(result.passed, false);
+});
+
+test("accepts an arrival weekday that matches the verified payout date", () => {
+  const verifiedPayoutContext = {
+    refund_status: "processing",
+    refund_completed_at: null,
+    payout_expected_at: "2026-11-13",
+    payout_estimate_source: "Verified payment processor estimate",
+    tracking_path: "Orders → Refunds"
+  };
+
+  const result = evaluateRefundPromise(
+    "Your refund will arrive on Friday.",
+    verifiedPayoutContext
+  );
+
+  assert.equal(result.passed, true);
+});
+
+test("returns unknown when an arrival date matches the completion date but no payout estimate exists", () => {
   const confirmedContext = {
     refund_status: "processing",
-    completion_date: "2026-11-13",
+    refund_completed_at: "2026-11-13",
+    payout_expected_at: null,
+    payout_estimate_source: null,
     tracking_path: "Orders → Refunds"
   };
 
@@ -195,10 +279,13 @@ test("allows the exact confirmed calendar date", () => {
     confirmedContext
   );
 
-  assert.equal(result.passed, true);
+  assert.equal(result.verdict, "unknown");
+  assert.equal(result.passed, false);
 });
 
+// --------------------------------------------------
 // Tracking instruction evaluation tests
+// --------------------------------------------------
 
 test("passes when the response includes the verified tracking path", () => {
   const result = evaluateTrackingInstruction(
@@ -221,7 +308,9 @@ test("fails when the response omits the verified tracking path", () => {
 test("rejects a missing verified tracking path", () => {
   const invalidContext = {
     refund_status: "processing",
-    completion_date: null,
+    refund_completed_at: null,
+    payout_expected_at: null,
+    payout_estimate_source: null,
     tracking_path: ""
   };
 
@@ -237,9 +326,9 @@ test("rejects a missing verified tracking path", () => {
   );
 });
 
+// --------------------------------------------------
 // Dataset-driven evaluation tests
-
- // Dataset-driven evaluation tests
+// --------------------------------------------------
 
 for (const scenario of dataset) {
   for (const response of scenario.responses) {
@@ -287,7 +376,10 @@ for (const scenario of dataset) {
   }
 }
 
+// --------------------------------------------------
 // Refund status evaluation tests
+// --------------------------------------------------
+
 test("passes when the response matches the verified processing status", () => {
   const result = evaluateRefundStatus(
     "Your refund is still being processed.",
@@ -350,6 +442,7 @@ test("flags a completed refund claim expressed as successfully processed", () =>
 
   assert.equal(result.passed, false);
 });
+
 test("does not flag a negated successfully processed claim", () => {
   const result = evaluateRefundStatus(
     "Your refund has not been processed successfully; it is still being processed.",
@@ -357,6 +450,16 @@ test("does not flag a negated successfully processed claim", () => {
   );
 
   assert.equal(result.passed, true);
+});
+
+test("returns unknown when the response makes no refund status claim", () => {
+  const result = evaluateRefundStatus(
+    "Thank you for your patience. We are looking into your request.",
+    context
+  );
+
+  assert.equal(result.verdict, "unknown");
+  assert.equal(result.passed, false);
 });
 
 test("rejects an unsupported verified refund status", () => {
@@ -371,6 +474,7 @@ test("rejects an unsupported verified refund status", () => {
     }
   );
 });
+
 test("does not flag a negated failure claim", () => {
   const result = evaluateRefundStatus(
     "Your refund has not failed. It is still being processed.",
@@ -379,6 +483,11 @@ test("does not flag a negated failure claim", () => {
 
   assert.equal(result.passed, true);
 });
+
+// --------------------------------------------------
+// Additional regression tests
+// --------------------------------------------------
+
 test("does not flag an unrelated calendar date as a refund arrival promise", () => {
   const result = evaluateRefundPromise(
     "Your refund is still being processed. Our support team will contact you on November 16, 2026, with an update.",
@@ -387,10 +496,31 @@ test("does not flag an unrelated calendar date as a refund arrival promise", () 
 
   assert.equal(result.passed, true);
 });
+
+test("does not treat a later contact date as a refund arrival date", () => {
+  const verifiedPayoutContext = {
+    refund_status: "processing",
+    refund_completed_at: null,
+    payout_expected_at: "2026-11-13",
+    payout_estimate_source: "Verified payment processor estimate",
+    tracking_path: "Orders → Refunds"
+  };
+
+  const result = evaluateRefundPromise(
+    "Your refund will arrive. Our support team will contact you on November 13, 2026.",
+    verifiedPayoutContext
+  );
+
+  assert.equal(result.passed, false);
+  assert.equal(result.verdict, "unknown");
+});
+
 test("does not flag an unrelated weekday as a conflicting refund date", () => {
   const confirmedContext = {
     refund_status: "processing",
-    completion_date: "2026-11-13",
+    refund_completed_at: "2026-11-13",
+    payout_expected_at: null,
+    payout_estimate_source: null,
     tracking_path: "Orders → Refunds"
   };
 
@@ -401,6 +531,7 @@ test("does not flag an unrelated weekday as a conflicting refund date", () => {
 
   assert.equal(result.passed, true);
 });
+
 test("accepts a readable tracking instruction that expresses the verified path", () => {
   const result = evaluateTrackingInstruction(
     "Open Orders, then select Refunds to check your refund.",
@@ -409,6 +540,7 @@ test("accepts a readable tracking instruction that expresses the verified path",
 
   assert.equal(result.passed, true);
 });
+
 test("rejects a tracking instruction that gives the verified steps in the wrong order", () => {
   const result = evaluateTrackingInstruction(
     "Select Refunds, then open Orders.",
@@ -417,6 +549,7 @@ test("rejects a tracking instruction that gives the verified steps in the wrong 
 
   assert.equal(result.passed, false);
 });
+
 test("rejects a tracking instruction that includes only part of the verified path", () => {
   const result = evaluateTrackingInstruction(
     "Open Orders to check your refund.",
@@ -425,39 +558,155 @@ test("rejects a tracking instruction that includes only part of the verified pat
 
   assert.equal(result.passed, false);
 });
+
 test("flags a completed refund that is incorrectly described as processing", () => {
   const result = evaluateRefundStatus(
     "Your refund is still being processed.",
     {
       refund_status: "completed",
-      completion_date: "2026-11-10",
+      refund_completed_at: "2026-11-10",
+      payout_expected_at: null,
+      payout_estimate_source: null,
       tracking_path: "Orders → Refunds"
     }
   );
 
   assert.equal(result.passed, false);
 });
+
 test("flags a completed refund response that gives the wrong completion date", () => {
   const result = evaluateRefundPromise(
     "Your refund will be completed on November 12, 2026.",
     {
       refund_status: "completed",
-      completion_date: "2026-11-10",
+      refund_completed_at: "2026-11-10",
+      payout_expected_at: null,
+      payout_estimate_source: null,
       tracking_path: "Orders → Refunds"
     }
   );
 
   assert.equal(result.passed, false);
 });
+
 test("flags an impossible refund completion date", () => {
   const result = evaluateRefundPromise(
     "Your refund was completed on November 32, 2026.",
     {
       refund_status: "completed",
-      completion_date: "2026-11-10",
+      refund_completed_at: "2026-11-10",
+      payout_expected_at: null,
+      payout_estimate_source: null,
       tracking_path: "Orders → Refunds"
     }
   );
 
+  assert.equal(result.passed, false);
+});
+
+test("rejects an incorrect completion date even when the arrival date is correct", () => {
+  const verifiedContext = {
+    refund_status: "processing",
+    refund_completed_at: "2026-11-10",
+    payout_expected_at: "2026-11-13",
+    payout_estimate_source: "Verified payment processor estimate",
+    tracking_path: "Orders → Refunds"
+  };
+
+  const result = evaluateRefundPromise(
+    "Your refund was completed on November 11, 2026. Your money will arrive on November 13, 2026.",
+    verifiedContext
+  );
+
+  assert.equal(result.passed, false);
+});
+
+test("rejects an incorrect arrival date even when the completion date is correct", () => {
+  const verifiedContext = {
+    refund_status: "processing",
+    refund_completed_at: "2026-11-10",
+    payout_expected_at: "2026-11-13",
+    payout_estimate_source: "Verified payment processor estimate",
+    tracking_path: "Orders → Refunds"
+  };
+
+  const result = evaluateRefundPromise(
+    "Your refund was completed on November 10, 2026. Your money will arrive on November 14, 2026.",
+    verifiedContext
+  );
+
+  assert.equal(result.passed, false);
+});
+
+test("does not associate an unrelated later date with a refund completion claim", () => {
+  const verifiedContext = {
+    refund_status: "processing",
+    refund_completed_at: null,
+    payout_expected_at: null,
+    payout_estimate_source: null,
+    tracking_path: "Orders → Refunds"
+  };
+
+  const result = evaluateRefundPromise(
+    "Your refund was completed. Our support team will contact you on November 16, 2026.",
+    verifiedContext
+  );
+
+  assert.equal(result.passed, true);
+});
+
+test("returns unknown for a completion date when no verified completion date exists", () => {
+  const unverifiedContext = {
+    refund_status: "completed",
+    refund_completed_at: null,
+    payout_expected_at: null,
+    payout_estimate_source: null,
+    tracking_path: "Orders → Refunds"
+  };
+
+  const result = evaluateRefundPromise(
+    "Your refund was completed on November 10, 2026.",
+    unverifiedContext
+  );
+
+  assert.equal(result.verdict, "unknown");
+  assert.equal(result.passed, false);
+});
+
+test("returns unknown when an arrival timeframe cannot be verified against a payout estimate", () => {
+  const verifiedPayoutContext = {
+    refund_status: "processing",
+    refund_completed_at: null,
+    payout_expected_at: "2026-11-20",
+    payout_estimate_source: "Verified payment processor estimate",
+    tracking_path: "Orders → Refunds"
+  };
+
+  const result = evaluateRefundPromise(
+    "Your refund will arrive within three business days.",
+    verifiedPayoutContext
+  );
+
+  assert.equal(result.verdict, "unknown");
+  assert.equal(result.passed, false);
+});
+
+test("recognizes a refund described as processed", () => {
+  const result = evaluateRefundStatus(
+    "Your refund has been processed.",
+    { ...context, refund_status: "completed" }
+  );
+
+  assert.equal(result.verdict, "pass");
+  assert.equal(result.passed, true);
+});
+
+test("does not treat a negated processing claim as an affirmative status claim", () => {
+  const result = evaluateRefundStatus(
+    "Your refund is not being processed.",
+    { ...context, refund_status: "completed" }
+  );
+
+  assert.equal(result.verdict, "unknown");
   assert.equal(result.passed, false);
 });

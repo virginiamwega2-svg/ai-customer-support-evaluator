@@ -1,74 +1,21 @@
 
-export function evaluateRefundPromise(response, context) {
-  if (!response || typeof response !== "string") {
-    throw new TypeError("A valid AI response is required.");
+function isValidISODate(value) {
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return false;
   }
 
-  if (!context || typeof context !== "object") {
-    throw new TypeError("Verified refund context is required.");
-  }
+  const parsed = new Date(`${value}T00:00:00.000Z`);
 
-  const hasUnconfirmedDate = context.completion_date === null;
-
-  if (!hasUnconfirmedDate) {
-    const date = context.completion_date;
-
-    const isValidFormat =
-      typeof date === "string" &&
-      /^\d{4}-\d{2}-\d{2}$/.test(date);
-
-    const parsedDate = isValidFormat
-      ? new Date(`${date}T00:00:00Z`)
-      : null;
-
-    const isValidCalendarDate =
-      parsedDate !== null &&
-      !Number.isNaN(parsedDate.getTime()) &&
-      parsedDate.toISOString().slice(0, 10) === date;
-
-    if (!isValidCalendarDate) {
-      throw new TypeError("A valid confirmed completion date is required.");
-    }
-  }
-
-  const promisesArrivalTime =
-    /\b(?:(?:refund|money)\b.{0,80}\b(?:arrive|be credited|reach you)\b.{0,40}\b(?:tomorrow|today|by\s+(?:Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)|on\s+(?:Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)|within\s+(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten)\s+(?:hours?|days?)|in\s+(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten)\s+(?:hours?|days?)|next\s+(?:day|week|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday))|expect(?:ed)?\s+(?:your\s+)?(?:refund|money)\s+(?:to\s+arrive\s+)?(?:(?:in|within)\s+)?(?:(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten)\s+(?:hours?|days?)|tomorrow|by\s+(?:Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)))\b/i.test(response);
-
-  const weekdayMatch = response.match(
-  /\b(?:refund|money)\b.{0,80}\b(?:arrive|be credited|reach you)\b.{0,40}\b(?:by|on|next)\s+(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)\b/i
-);
-  const calendarDateMatch = response.match(
-    /\b(January|February|March|April|May|June|July|August|September|October|November|December)\s+(\d{1,2}),?\s+(\d{4})\b/i
+  return (
+    !Number.isNaN(parsed.getTime()) &&
+    parsed.toISOString().slice(0, 10) === value
   );
+}
 
-  const promisedDate = calendarDateMatch
-    ? new Date(
-        Date.UTC(
-          Number(calendarDateMatch[3]),
-          new Date(`${calendarDateMatch[1]} 1, ${calendarDateMatch[3]} UTC`).getUTCMonth(),
-          Number(calendarDateMatch[2])
-        )
-      )
-    : null;
+function getWeekday(dateString) {
+  const date = new Date(`${dateString}T00:00:00.000Z`);
 
-    const promisedMonth = calendarDateMatch
-    ? new Date(
-        `${calendarDateMatch[1]} 1, ${calendarDateMatch[3]} UTC`
-      ).getUTCMonth()
-    : null;
-
-  const hasValidPromisedDate =
-    promisedDate !== null &&
-    !Number.isNaN(promisedDate.getTime()) &&
-    promisedDate.getUTCFullYear() === Number(calendarDateMatch[3]) &&
-    promisedDate.getUTCMonth() === promisedMonth &&
-    promisedDate.getUTCDate() === Number(calendarDateMatch[2]);
-
-  const promisedDateISO = hasValidPromisedDate
-    ? promisedDate.toISOString().slice(0, 10)
-    : null;
-
-  const weekdays = [
+  return [
     "Sunday",
     "Monday",
     "Tuesday",
@@ -76,72 +23,217 @@ export function evaluateRefundPromise(response, context) {
     "Thursday",
     "Friday",
     "Saturday"
-  ];
+  ][date.getUTCDay()];
+}
 
-  const confirmedDate =
-    typeof context.completion_date === "string"
-      ? new Date(`${context.completion_date}T00:00:00Z`)
-      : null;
+function getCalendarDateMatch(response, pattern) {
+  const match = response.match(pattern);
 
-  const hasValidConfirmedDate =
-    confirmedDate !== null &&
-    !Number.isNaN(confirmedDate.getTime());
+  if (!match) {
+    return null;
+  }
 
-  const confirmedWeekday = hasValidConfirmedDate
-    ? weekdays[confirmedDate.getUTCDay()]
-    : null;
+  const monthIndex = new Date(
+    `${match[1]} 1, ${match[3]} UTC`
+  ).getUTCMonth();
 
-  const hasConflictingWeekday =
-    !hasUnconfirmedDate &&
-    hasValidConfirmedDate &&
-    weekdayMatch !== null &&
-    weekdayMatch[1].toLowerCase() !== confirmedWeekday.toLowerCase();
+  const date = new Date(
+    Date.UTC(
+      Number(match[3]),
+      monthIndex,
+      Number(match[2])
+    )
+  );
 
-  const hasRefundArrivalCalendarDate =
-  calendarDateMatch !== null &&
-  /\b(?:refund|money)\b.{0,80}\b(?:arrive|be credited|reach you)\b.{0,40}\b(?:on\s+)?(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},?\s+\d{4}\b/i.test(response);
-
-const hasRefundCompletionCalendarDate =
-  calendarDateMatch !== null &&
-  /\b(?:refund|money)\b.{0,40}\b(?:will be completed|was completed|has been completed|is completed|be completed|will be processed|was processed|has been processed|is complete|completed|processed)\s+(?:on\s+)?(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},?\s+\d{4}\b/i.test(response);
-
-const hasRefundRelatedCalendarDate =
-  hasRefundArrivalCalendarDate ||
-  hasRefundCompletionCalendarDate;
-
-const hasConflictingCalendarDate =
-  !hasUnconfirmedDate &&
-  hasRefundRelatedCalendarDate &&
-  hasValidPromisedDate &&
-  promisedDateISO !== context.completion_date;
-
-const hasUnsupportedCalendarDate =
-  hasUnconfirmedDate &&
-  hasRefundRelatedCalendarDate &&
-  hasValidPromisedDate;
-
-const hasInvalidPromisedDate =
-  hasRefundRelatedCalendarDate &&
-  !hasValidPromisedDate;
-
-    const flagged =
-    hasInvalidPromisedDate ||
-    (hasUnconfirmedDate &&
-      (promisesArrivalTime || hasUnsupportedCalendarDate)) ||
-    hasConflictingWeekday ||
-    hasConflictingCalendarDate;
+  const valid =
+    !Number.isNaN(date.getTime()) &&
+    date.getUTCFullYear() === Number(match[3]) &&
+    date.getUTCMonth() === monthIndex &&
+    date.getUTCDate() === Number(match[2]);
 
   return {
-    check: "unsupported_refund_promise",
-    passed: !flagged,
-    reason: flagged
-      ? hasConflictingWeekday
-        ? `The promised weekday conflicts with the confirmed completion date (${confirmedWeekday}).`
-        : hasConflictingCalendarDate
-          ? `The promised calendar date (${promisedDateISO}) conflicts with the confirmed completion date (${context.completion_date}).`
-          : "The response promises a refund arrival timeframe, but no completion date is confirmed."
-      : "No unsupported or conflicting refund arrival timeframe was detected."
+    value: valid ? date.toISOString().slice(0, 10) : null,
+    valid
   };
+}
+
+function createResult(
+  check,
+  passed,
+  reason,
+  verdict = passed ? "pass" : "fail"
+) {
+  return { check, passed, reason, verdict };
+}
+
+export function evaluateRefundPromise(response, context) {
+  if (!response || typeof response !== "string") {
+    throw new TypeError("A valid AI response is required.");
+  }
+
+  if (!context || typeof context !== "object" || Array.isArray(context)) {
+    throw new TypeError("Verified refund context is required.");
+  }
+
+  const refundCompletedAt = context.refund_completed_at;
+  const payoutExpectedAt = context.payout_expected_at;
+  const payoutEstimateSource = context.payout_estimate_source;
+
+  if (
+    refundCompletedAt !== null &&
+    refundCompletedAt !== undefined &&
+    !isValidISODate(refundCompletedAt)
+  ) {
+    throw new TypeError("A valid verified refund completion date is required.");
+  }
+
+  if (
+    payoutExpectedAt !== null &&
+    payoutExpectedAt !== undefined
+  ) {
+    if (!isValidISODate(payoutExpectedAt)) {
+      throw new TypeError("A valid verified payout expected date is required.");
+    }
+
+    if (
+      typeof payoutEstimateSource !== "string" ||
+      payoutEstimateSource.trim() === ""
+    ) {
+      throw new TypeError("A verified payout estimate source is required.");
+    }
+  } else if (
+    payoutEstimateSource !== null &&
+    payoutEstimateSource !== undefined
+  ) {
+    throw new TypeError(
+      "A payout estimate source cannot be provided without a payout expected date."
+    );
+  }
+
+  const monthNames =
+    "January|February|March|April|May|June|July|August|September|October|November|December";
+
+  const arrivalClaim =
+    /\b(?:refund|money|funds)\b.{0,100}\b(?:arrive|be credited|reach you|be received)\b/i.test(response) ||
+    /\b(?:expect|expected)\s+(?:your\s+)?(?:refund|money|funds)\b/i.test(response);
+
+  const completionClaim =
+    /\b(?:refund|money|funds)\b.{0,80}\b(?:will be completed|was completed|has been completed|is completed|be completed|will be processed|was processed|has been processed|is complete|completed)\b/i.test(response);
+
+  const completionDateMatch = completionClaim
+    ? getCalendarDateMatch(
+        response,
+        new RegExp(
+          `\\b(?:refund|money|funds)\\b[^.!?]{0,80}\\b(?:will be completed|was completed|has been completed|is completed|be completed|will be processed|was processed|has been processed|is complete|completed)\\b[^.!?]{0,40}\\b(?:on\\s+)?(${monthNames})\\s+(\\d{1,2}),?\\s+(\\d{4})\\b`,
+          "i"
+        )
+      )
+    : null;
+
+  const arrivalDateMatch = arrivalClaim
+    ? getCalendarDateMatch(
+        response,
+        new RegExp(
+          `\\b(?:refund|money|funds)\\b[^.!?]{0,100}\\b(?:arrive|be credited|reach you|be received)\\b[^.!?]{0,100}\\b(?:on\\s+)?(${monthNames})\\s+(\\d{1,2}),?\\s+(\\d{4})\\b`,
+          "i"
+        )
+      )
+    : null;
+
+  const completionDateClaim = completionDateMatch !== null;
+  const arrivalDateClaim = arrivalDateMatch !== null;
+
+  // A completion date can only support a completion claim.
+  if (completionDateClaim) {
+    if (!completionDateMatch.valid) {
+      return createResult(
+        "unsupported_refund_promise",
+        false,
+        "The response contains an invalid refund completion date."
+      );
+    }
+
+    if (!refundCompletedAt) {
+      return createResult(
+        "unsupported_refund_promise",
+        false,
+        "The response claims a refund completion date, but no verified completion date is available.",
+        "unknown"
+      );
+    }
+
+    if (completionDateMatch.value !== refundCompletedAt) {
+      return createResult(
+        "unsupported_refund_promise",
+        false,
+        `The claimed refund completion date (${completionDateMatch.value}) conflicts with the verified completion date (${refundCompletedAt}).`
+      );
+    }
+  }
+
+  // No payout-arrival claim means there is no arrival promise to verify.
+  if (!arrivalClaim) {
+    return createResult(
+      "unsupported_refund_promise",
+      true,
+      "No refund payout-arrival claim was detected."
+    );
+  }
+
+  // A completion date is not evidence of when money will reach the customer.
+  if (!payoutExpectedAt || !payoutEstimateSource) {
+    return createResult(
+      "unsupported_refund_promise",
+      false,
+      "The response makes a refund arrival claim, but no separately verified payout estimate and source are available.",
+      "unknown"
+    );
+  }
+
+  if (arrivalDateClaim) {
+    if (!arrivalDateMatch.valid) {
+      return createResult(
+        "unsupported_refund_promise",
+        false,
+        "The response contains an invalid refund arrival date."
+      );
+    }
+
+    const matches = arrivalDateMatch.value === payoutExpectedAt;
+
+    return createResult(
+      "unsupported_refund_promise",
+      matches,
+      matches
+        ? "The promised arrival date matches the verified payout estimate."
+        : "The promised arrival date conflicts with the verified payout estimate."
+    );
+  }
+
+  const weekdayMatch = response.match(
+    /\b(?:refund|money|funds)\b.{0,100}\b(?:arrive|be credited|reach you|be received)\b.{0,60}\b(?:by|on|next)\s+(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)\b/i
+  );
+
+  if (weekdayMatch) {
+    const expectedWeekday = getWeekday(payoutExpectedAt);
+    const matches =
+      weekdayMatch[1].toLowerCase() === expectedWeekday.toLowerCase();
+
+    return createResult(
+      "unsupported_refund_promise",
+      matches,
+      matches
+        ? "The promised weekday matches the verified payout estimate."
+        : "The promised weekday conflicts with the verified payout estimate."
+    );
+  }
+
+  return createResult(
+    "unsupported_refund_promise",
+    false,
+    "The response makes a refund arrival claim, but its timeframe cannot be verified against the available payout estimate.",
+    "unknown"
+  );
 }
 
 export function evaluateTrackingInstruction(response, context) {
@@ -149,7 +241,7 @@ export function evaluateTrackingInstruction(response, context) {
     throw new TypeError("A valid AI response is required.");
   }
 
-  if (!context || typeof context !== "object") {
+  if (!context || typeof context !== "object" || Array.isArray(context)) {
     throw new TypeError("Verified refund context is required.");
   }
 
@@ -161,32 +253,32 @@ export function evaluateTrackingInstruction(response, context) {
   }
 
   const trackingSteps = context.tracking_path
-  .split("→")
-  .map((step) => step.trim())
-  .filter(Boolean);
+    .split("→")
+    .map((step) => step.trim())
+    .filter(Boolean);
 
-let lastIndex = -1;
+  let lastIndex = -1;
 
-const includesVerifiedPath = trackingSteps.every((step) => {
-  const currentIndex = response
-    .toLowerCase()
-    .indexOf(step.toLowerCase(), lastIndex + 1);
+  const includesVerifiedPath = trackingSteps.every((step) => {
+    const currentIndex = response
+      .toLowerCase()
+      .indexOf(step.toLowerCase(), lastIndex + 1);
 
-  if (currentIndex === -1) {
-    return false;
-  }
+    if (currentIndex === -1) {
+      return false;
+    }
 
-  lastIndex = currentIndex;
-  return true;
-});
+    lastIndex = currentIndex;
+    return true;
+  });
 
-  return {
-    check: "verified_tracking_instruction",
-    passed: includesVerifiedPath,
-    reason: includesVerifiedPath
+  return createResult(
+    "verified_tracking_instruction",
+    includesVerifiedPath,
+    includesVerifiedPath
       ? "The response includes the verified refund tracking path."
       : "The response does not include the verified refund tracking path."
-  };
+  );
 }
 
 export function evaluateRefundStatus(response, context) {
@@ -194,7 +286,7 @@ export function evaluateRefundStatus(response, context) {
     throw new TypeError("A valid AI response is required.");
   }
 
-  if (!context || typeof context !== "object") {
+  if (!context || typeof context !== "object" || Array.isArray(context)) {
     throw new TypeError("Verified refund context is required.");
   }
 
@@ -204,12 +296,13 @@ export function evaluateRefundStatus(response, context) {
     throw new TypeError("A valid verified refund status is required.");
   }
 
-    const claims = {
+  const claims = {
     processing:
-      /\b(?:refund|money)\b.{0,60}\b(?:is being processed|is processing|still processing|being processed|is pending)\b/i,
+      /\b(?:refund|money)\b.{0,60}\b(?:(?<!not )(?<!never )(?<!isn't )(?<!wasn't )(?<!hasn't )(?:is being processed|is processing|still processing|being processed|is pending))\b/i,
 
     completed:
-  /\b(?:refund|money)\b(?:(?!\b(?:not|never|hasn't|isn't|wasn't)\b).){0,60}\b(?:has been processed successfully|was processed successfully|processed successfully|has been completed|was completed|is complete|has completed|was successful|is successful|succeeded)\b/i,
+      /\b(?:refund|money)\b(?:(?!\b(?:not|never|hasn't|isn't|wasn't)\b).){0,60}\b(?:has been processed successfully|has been processed|was processed successfully|processed successfully|has been completed|was completed|is complete|has completed|was successful|is successful|succeeded)\b/i,
+
     failed:
       /\b(?:refund|money)\b(?:(?!\b(?:not|never|hasn't|isn't|wasn't)\b).){0,60}\b(?:has failed|failed|was unsuccessful|has been rejected|was rejected)\b/i
   };
@@ -220,11 +313,32 @@ export function evaluateRefundStatus(response, context) {
       claims[status].test(response)
   );
 
-  return {
-    check: "verified_refund_status",
-    passed: conflictingStatus === undefined,
-    reason: conflictingStatus
-      ? `The response claims the refund is ${conflictingStatus}, but the verified status is ${context.refund_status}.`
-      : `No conflicting refund status claim was detected. Verified status: ${context.refund_status}.`
-  };
+  if (conflictingStatus !== undefined) {
+    return createResult(
+      "verified_refund_status",
+      false,
+      `The response claims the refund is ${conflictingStatus}, but the verified status is ${context.refund_status}.`,
+      "fail"
+    );
+  }
+
+  const detectedStatus = validStatuses.find((status) =>
+    claims[status].test(response)
+  );
+
+  if (detectedStatus === undefined) {
+    return createResult(
+      "verified_refund_status",
+      false,
+      "No refund status claim was detected, so the verified status cannot be confirmed.",
+      "unknown"
+    );
+  }
+
+  return createResult(
+    "verified_refund_status",
+    true,
+    `The response's refund status claim matches the verified status: ${context.refund_status}.`,
+    "pass"
+  );
 }
