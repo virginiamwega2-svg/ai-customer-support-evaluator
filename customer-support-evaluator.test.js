@@ -284,6 +284,113 @@ test("returns unknown when an arrival date matches the completion date but no pa
 });
 
 // --------------------------------------------------
+test("records evidence for separate refund completion and payout dates", () => {
+  const response =
+    "Your refund was completed on November 10, 2026. Your money will arrive on November 13, 2026.";
+
+  const result = evaluateRefundPromise(response, {
+    refund_completed_at: "2026-11-10",
+    payout_expected_at: "2026-11-13",
+    payout_estimate_source: "Verified payment processor estimate"
+  });
+
+  assert.equal(result.verdict, "pass");
+  assert.equal(result.evidence.length, 2);
+
+  assert.deepEqual(
+    result.evidence.map((item) => ({
+      claimType: item.claimType,
+      claimedValue: item.claimedValue,
+      verifiedValue: item.verifiedValue,
+      verifiedField: item.verifiedField,
+      verifiedSource: item.verifiedSource
+    })),
+    [
+      {
+        claimType: "refund_completion_date",
+        claimedValue: "2026-11-10",
+        verifiedValue: "2026-11-10",
+        verifiedField: "refund_completed_at",
+        verifiedSource: null
+      },
+      {
+        claimType: "payout_arrival_date",
+        claimedValue: "2026-11-13",
+        verifiedValue: "2026-11-13",
+        verifiedField: "payout_expected_at",
+        verifiedSource: "Verified payment processor estimate"
+      }
+    ]
+  );
+
+  for (const item of result.evidence) {
+    assert.equal(
+      response.slice(item.startIndex, item.endIndex),
+      item.responseExcerpt
+    );
+  }
+});
+
+test("retains both date evidence records when the completion date is incorrect", () => {
+  const response =
+    "Your refund was completed on November 11, 2026. Your money will arrive on November 13, 2026.";
+
+  const result = evaluateRefundPromise(response, {
+    refund_completed_at: "2026-11-10",
+    payout_expected_at: "2026-11-13",
+    payout_estimate_source: "Verified payment processor estimate"
+  });
+
+  assert.equal(result.verdict, "fail");
+  assert.equal(result.evidence.length, 2);
+
+  assert.equal(
+    result.evidence[0].claimedValue,
+    "2026-11-11"
+  );
+  assert.equal(
+    result.evidence[1].claimedValue,
+    "2026-11-13"
+  );
+  assert.equal(
+    result.evidence[1].verifiedValue,
+    "2026-11-13"
+  );
+});
+
+test("records an arrival date as unverified when no payout estimate exists", () => {
+  const response =
+    "Your money will arrive on November 13, 2026.";
+
+  const result = evaluateRefundPromise(response, {
+    refund_completed_at: "2026-11-10",
+    payout_expected_at: null,
+    payout_estimate_source: null
+  });
+
+  assert.equal(result.verdict, "unknown");
+  assert.equal(result.evidence.length, 1);
+
+  assert.deepEqual(result.evidence[0], {
+    claimType: "payout_arrival_date",
+    claimedValue: "2026-11-13",
+    verifiedValue: null,
+    verifiedField: null,
+    verifiedSource: null,
+    responseExcerpt: result.evidence[0].responseExcerpt,
+    startIndex: result.evidence[0].startIndex,
+    endIndex: result.evidence[0].endIndex
+  });
+
+  assert.equal(
+    response.slice(
+      result.evidence[0].startIndex,
+      result.evidence[0].endIndex
+    ),
+    result.evidence[0].responseExcerpt
+  );
+});
+
 // Tracking instruction evaluation tests
 // --------------------------------------------------
 

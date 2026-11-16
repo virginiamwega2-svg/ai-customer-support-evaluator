@@ -29,20 +29,14 @@ function getWeekday(dateString) {
 function getCalendarDateMatch(response, pattern) {
   const match = response.match(pattern);
 
-  if (!match) {
-    return null;
-  }
+  if (!match) return null;
 
   const monthIndex = new Date(
     `${match[1]} 1, ${match[3]} UTC`
   ).getUTCMonth();
 
   const date = new Date(
-    Date.UTC(
-      Number(match[3]),
-      monthIndex,
-      Number(match[2])
-    )
+    Date.UTC(Number(match[3]), monthIndex, Number(match[2]))
   );
 
   const valid =
@@ -53,7 +47,10 @@ function getCalendarDateMatch(response, pattern) {
 
   return {
     value: valid ? date.toISOString().slice(0, 10) : null,
-    valid
+    valid,
+    text: match[0],
+    index: match.index,
+    endIndex: match.index + match[0].length
   };
 }
 
@@ -61,9 +58,38 @@ function createResult(
   check,
   passed,
   reason,
-  verdict = passed ? "pass" : "fail"
+  verdict = passed ? "pass" : "fail",
+  evidence = []
 ) {
-  return { check, passed, reason, verdict };
+  const result = { check, passed, reason, verdict };
+
+  if (evidence.length > 0) {
+    result.evidence = evidence;
+  }
+
+  return result;
+}
+
+function createDateEvidence(
+  claimType,
+  match,
+  verifiedValue,
+  verifiedField,
+  verifiedSource = null
+) {
+  const hasVerifiedValue =
+    verifiedValue !== null && verifiedValue !== undefined;
+
+  return {
+    claimType,
+    claimedValue: match.value,
+    verifiedValue: hasVerifiedValue ? verifiedValue : null,
+    verifiedField: hasVerifiedValue ? verifiedField : null,
+    verifiedSource: hasVerifiedValue ? verifiedSource : null,
+    responseExcerpt: match.text,
+    startIndex: match.index,
+    endIndex: match.endIndex
+  };
 }
 
 export function evaluateRefundPromise(response, context) {
@@ -87,10 +113,7 @@ export function evaluateRefundPromise(response, context) {
     throw new TypeError("A valid verified refund completion date is required.");
   }
 
-  if (
-    payoutExpectedAt !== null &&
-    payoutExpectedAt !== undefined
-  ) {
+  if (payoutExpectedAt !== null && payoutExpectedAt !== undefined) {
     if (!isValidISODate(payoutExpectedAt)) {
       throw new TypeError("A valid verified payout expected date is required.");
     }
@@ -142,14 +165,41 @@ export function evaluateRefundPromise(response, context) {
 
   const completionDateClaim = completionDateMatch !== null;
   const arrivalDateClaim = arrivalDateMatch !== null;
+  const evidence = [];
 
-  // A completion date can only support a completion claim.
+  // Collect both records before evaluating either claim.
+  if (completionDateClaim) {
+    evidence.push(
+      createDateEvidence(
+        "refund_completion_date",
+        completionDateMatch,
+        refundCompletedAt,
+        "refund_completed_at"
+      )
+    );
+  }
+
+  if (arrivalDateClaim) {
+    evidence.push(
+      createDateEvidence(
+        "payout_arrival_date",
+        arrivalDateMatch,
+        payoutExpectedAt,
+        "payout_expected_at",
+        payoutEstimateSource
+      )
+    );
+  }
+
+  // A completion date can only be supported by the verified completion date.
   if (completionDateClaim) {
     if (!completionDateMatch.valid) {
       return createResult(
         "unsupported_refund_promise",
         false,
-        "The response contains an invalid refund completion date."
+        "The response contains an invalid refund completion date.",
+        undefined,
+        evidence
       );
     }
 
@@ -158,7 +208,8 @@ export function evaluateRefundPromise(response, context) {
         "unsupported_refund_promise",
         false,
         "The response claims a refund completion date, but no verified completion date is available.",
-        "unknown"
+        "unknown",
+        evidence
       );
     }
 
@@ -166,27 +217,31 @@ export function evaluateRefundPromise(response, context) {
       return createResult(
         "unsupported_refund_promise",
         false,
-        `The claimed refund completion date (${completionDateMatch.value}) conflicts with the verified completion date (${refundCompletedAt}).`
+        `The claimed refund completion date (${completionDateMatch.value}) conflicts with the verified completion date (${refundCompletedAt}).`,
+        undefined,
+        evidence
       );
     }
   }
 
-  // No payout-arrival claim means there is no arrival promise to verify.
   if (!arrivalClaim) {
     return createResult(
       "unsupported_refund_promise",
       true,
-      "No refund payout-arrival claim was detected."
+      "No refund payout-arrival claim was detected.",
+      undefined,
+      evidence
     );
   }
 
-  // A completion date is not evidence of when money will reach the customer.
+  // Completion dates cannot substantiate payout-arrival claims.
   if (!payoutExpectedAt || !payoutEstimateSource) {
     return createResult(
       "unsupported_refund_promise",
       false,
       "The response makes a refund arrival claim, but no separately verified payout estimate and source are available.",
-      "unknown"
+      "unknown",
+      evidence
     );
   }
 
@@ -195,7 +250,9 @@ export function evaluateRefundPromise(response, context) {
       return createResult(
         "unsupported_refund_promise",
         false,
-        "The response contains an invalid refund arrival date."
+        "The response contains an invalid refund arrival date.",
+        undefined,
+        evidence
       );
     }
 
@@ -206,7 +263,9 @@ export function evaluateRefundPromise(response, context) {
       matches,
       matches
         ? "The promised arrival date matches the verified payout estimate."
-        : "The promised arrival date conflicts with the verified payout estimate."
+        : "The promised arrival date conflicts with the verified payout estimate.",
+      undefined,
+      evidence
     );
   }
 
@@ -224,7 +283,9 @@ export function evaluateRefundPromise(response, context) {
       matches,
       matches
         ? "The promised weekday matches the verified payout estimate."
-        : "The promised weekday conflicts with the verified payout estimate."
+        : "The promised weekday conflicts with the verified payout estimate.",
+      undefined,
+      evidence
     );
   }
 
@@ -232,10 +293,10 @@ export function evaluateRefundPromise(response, context) {
     "unsupported_refund_promise",
     false,
     "The response makes a refund arrival claim, but its timeframe cannot be verified against the available payout estimate.",
-    "unknown"
+    "unknown",
+    evidence
   );
 }
-
 export function evaluateTrackingInstruction(response, context) {
   if (!response || typeof response !== "string") {
     throw new TypeError("A valid AI response is required.");
