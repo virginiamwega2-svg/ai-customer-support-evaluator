@@ -817,3 +817,64 @@ test("does not treat a negated processing claim as an affirmative status claim",
   assert.equal(result.verdict, "unknown");
   assert.equal(result.passed, false);
 });
+
+test("includes evidence for a matching refund status claim", () => {
+  const response = "Your refund is still being processed.";
+
+  const result = evaluateRefundStatus(response, context);
+
+  assert.equal(result.verdict, "pass");
+  assert.equal(result.evidence.length, 1);
+  assert.deepEqual(result.evidence[0], {
+    claimType: "refund_status",
+    claimedValue: "processing",
+    verifiedValue: "processing",
+    verifiedField: "refund_status",
+    verifiedSource: null,
+    responseExcerpt: "refund is still being processed",
+    startIndex: response.indexOf("refund"),
+    endIndex: response.length - 1
+  });
+});
+
+test("captures both claims when a response contradicts its verified refund status", () => {
+  const response =
+    "Your refund has been completed. Your refund is still being processed.";
+
+  const result = evaluateRefundStatus(response, context);
+
+  assert.equal(result.verdict, "fail");
+  assert.equal(result.evidence.length, 2);
+
+  assert.deepEqual(
+    result.evidence.map((item) => item.claimedValue),
+    ["completed", "processing"]
+  );
+
+  assert.ok(
+    result.evidence.every(
+      (item) => item.verifiedValue === "processing"
+    )
+  );
+});
+
+test("records actual evidence when a refund status claim refers back using it", () => {
+  const response =
+    "Your refund has not failed. It is still being processed.";
+
+  const result = evaluateRefundStatus(response, context);
+
+  assert.equal(result.verdict, "pass");
+  assert.equal(result.evidence.length, 1);
+
+  assert.deepEqual(result.evidence[0], {
+    claimType: "refund_status",
+    claimedValue: "processing",
+    verifiedValue: "processing",
+    verifiedField: "refund_status",
+    verifiedSource: null,
+    responseExcerpt: "It is still being processed",
+    startIndex: response.indexOf("It"),
+    endIndex: response.length - 1
+  });
+});

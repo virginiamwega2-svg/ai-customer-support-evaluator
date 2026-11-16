@@ -368,23 +368,65 @@ export function evaluateRefundStatus(response, context) {
       /\b(?:refund|money)\b(?:(?!\b(?:not|never|hasn't|isn't|wasn't)\b).){0,60}\b(?:has failed|failed|was unsuccessful|has been rejected|was rejected)\b/i
   };
 
+  let previousSentenceHasRefundSubject = false;
+
+const evidence = [...response.matchAll(/[^.!?]+[.!?]?/g)]
+  .flatMap((sentenceMatch) => {
+    const sentence = sentenceMatch[0];
+    const leadingWhitespace = sentence.match(/^\s*/)[0].length;
+    const content = sentence.slice(leadingWhitespace);
+    const contentStart = sentenceMatch.index + leadingWhitespace;
+
+    const hasRefundSubject = /\b(?:refund|money)\b/i.test(content);
+    const inheritsRefundSubject =
+      previousSentenceHasRefundSubject && /^it\b/i.test(content);
+
+    previousSentenceHasRefundSubject = hasRefundSubject;
+
+    const prefix = inheritsRefundSubject ? "refund " : "";
+    const matchingText = prefix + content;
+
+    return validStatuses.flatMap((status) => {
+      const pattern = new RegExp(claims[status].source, "gi");
+
+      return [...matchingText.matchAll(pattern)].map((match) => {
+        const excerpt = match[0].slice(prefix.length);
+        const startIndex = contentStart + match.index;
+
+        return {
+          claimType: "refund_status",
+          claimedValue: status,
+          verifiedValue: context.refund_status,
+          verifiedField: "refund_status",
+          verifiedSource: null,
+          responseExcerpt: excerpt,
+          startIndex,
+          endIndex: startIndex + excerpt.length
+        };
+      });
+    });
+  })
+  .sort((a, b) => a.startIndex - b.startIndex);
+
   const conflictingStatus = validStatuses.find(
     (status) =>
       status !== context.refund_status &&
-      claims[status].test(response)
+      evidence.some((item) => item.claimedValue === status)
   );
 
   if (conflictingStatus !== undefined) {
     return createResult(
       "verified_refund_status",
       false,
-      `The response claims the refund is ${conflictingStatus}, but the verified status is ${context.refund_status}.`,
-      "fail"
+      "The response claims the refund is " + conflictingStatus +
+        ", but the verified status is " + context.refund_status + ".",
+      "fail",
+      evidence
     );
   }
 
   const detectedStatus = validStatuses.find((status) =>
-    claims[status].test(response)
+    evidence.some((item) => item.claimedValue === status)
   );
 
   if (detectedStatus === undefined) {
@@ -399,7 +441,9 @@ export function evaluateRefundStatus(response, context) {
   return createResult(
     "verified_refund_status",
     true,
-    `The response's refund status claim matches the verified status: ${context.refund_status}.`,
-    "pass"
+    "The response's refund status claim matches the verified status: " +
+      context.refund_status + ".",
+    "pass",
+    evidence
   );
 }
