@@ -983,3 +983,84 @@ test("associates a bank-arrival date with a refund referenced in the previous se
     expectedStart + expectedExcerpt.length
   );
 });
+
+test("rejects conflicting refund arrival date claims in the same response", () => {
+  const response =
+    "Your refund will arrive on November 20, 2026. Your refund will arrive on November 25, 2026.";
+
+  const verifiedPayoutContext = {
+    refund_status: "processing",
+    refund_completed_at: null,
+    payout_expected_at: "2026-11-20",
+    payout_estimate_source: "Verified payment processor estimate",
+    tracking_path: "Orders → Refunds"
+  };
+
+  const result = evaluateRefundPromise(response, verifiedPayoutContext);
+
+  assert.equal(result.verdict, "fail");
+  assert.equal(result.passed, false);
+  assert.equal(result.evidence.length, 2);
+
+  assert.deepEqual(
+    result.evidence.map((item) => item.claimedValue),
+    ["2026-11-20", "2026-11-25"]
+  );
+
+  assert.ok(
+    result.evidence.every(
+      (item) => item.verifiedValue === "2026-11-20"
+    )
+  );
+});
+
+test("captures every arrival date when a refund is referenced as It", () => {
+  const response =
+    "Your refund is still processing. It will arrive on November 20, 2026, or November 25, 2026.";
+
+  const verifiedPayoutContext = {
+    refund_status: "processing",
+    refund_completed_at: null,
+    payout_expected_at: "2026-11-20",
+    payout_estimate_source: "Verified payment processor estimate",
+    tracking_path: "Orders → Refunds"
+  };
+
+  const result = evaluateRefundPromise(response, verifiedPayoutContext);
+
+  assert.equal(result.verdict, "fail");
+  assert.equal(result.passed, false);
+  assert.equal(result.evidence.length, 2);
+
+  assert.deepEqual(
+    result.evidence.map((item) => item.claimedValue),
+    ["2026-11-20", "2026-11-25"]
+  );
+
+  assert.ok(
+    result.evidence.every(
+      (item) => item.verifiedValue === "2026-11-20"
+    )
+  );
+});
+
+test("does not treat an unrelated coordinated date as another refund arrival claim", () => {
+  const response =
+    "Your refund will arrive on November 20, 2026, and our support team will contact you on November 25, 2026.";
+
+  const verifiedPayoutContext = {
+    refund_status: "processing",
+    refund_completed_at: null,
+    payout_expected_at: "2026-11-20",
+    payout_estimate_source: "Verified payment processor estimate",
+    tracking_path: "Orders → Refunds"
+  };
+
+  const result = evaluateRefundPromise(response, verifiedPayoutContext);
+
+  assert.equal(result.verdict, "pass");
+  assert.equal(result.passed, true);
+  assert.equal(result.evidence.length, 1);
+  assert.equal(result.evidence[0].claimedValue, "2026-11-20");
+  assert.equal(result.evidence[0].verifiedValue, "2026-11-20");
+});

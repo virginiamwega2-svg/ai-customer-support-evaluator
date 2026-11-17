@@ -26,11 +26,7 @@ function getWeekday(dateString) {
   ][date.getUTCDay()];
 }
 
-function getCalendarDateMatch(response, pattern) {
-  const match = response.match(pattern);
-
-  if (!match) return null;
-
+function parseCalendarDateMatch(match) {
   const monthIndex = new Date(
     `${match[1]} 1, ${match[3]} UTC`
   ).getUTCMonth();
@@ -52,6 +48,56 @@ function getCalendarDateMatch(response, pattern) {
     index: match.index,
     endIndex: match.index + match[0].length
   };
+}
+
+function getCalendarDateMatch(response, pattern) {
+  const match = response.match(pattern);
+  return match ? parseCalendarDateMatch(match) : null;
+}
+
+function getCalendarDateMatches(response, pattern) {
+  const globalPattern = new RegExp(
+    pattern.source,
+    `${pattern.flags.replace("g", "")}g`
+  );
+
+  return Array.from(
+    response.matchAll(globalPattern),
+    parseCalendarDateMatch
+  );
+}
+
+function getConnectedCalendarDateMatches(response, matches, monthNames) {
+  const additionalMatches = [];
+
+  for (const match of matches) {
+    const remainingText = response.slice(match.endIndex);
+    const sentenceEnd = remainingText.search(/[.!?]/);
+    const sentenceRemainder =
+      sentenceEnd === -1
+        ? remainingText
+        : remainingText.slice(0, sentenceEnd);
+
+    const alternativePattern = new RegExp(
+      `\\b(?:and|or)\\s+(${monthNames})\\s+(\\d{1,2}),?\\s+(\\d{4})\\b`,
+      "gi"
+    );
+
+    for (const alternative of sentenceRemainder.matchAll(alternativePattern)) {
+      const parsed = parseCalendarDateMatch(alternative);
+      const startIndex = match.endIndex + alternative.index;
+
+      additionalMatches.push({
+        ...parsed,
+        index: startIndex,
+        endIndex: startIndex + alternative[0].length
+      });
+    }
+  }
+
+  return [...matches, ...additionalMatches].sort(
+    (a, b) => a.index - b.index
+  );
 }
 
 function createResult(
@@ -154,17 +200,21 @@ export function evaluateRefundPromise(response, context) {
     : null;
 
   const arrivalDatePattern = new RegExp(
-    `\\b(?:refund|money|funds)\\b[^.!?]{0,100}\\b(?:arrive|be credited|reach you|reach your bank|be received)\\b[^.!?]{0,100}\\b(?:on\\s+)?(${monthNames})\\s+(\\d{1,2}),?\\s+(\\d{4})\\b`,
+    `\\b(?:refund|money|funds)\\b[^.!?]{0,100}\\b(?:arrive|be credited|reach you|reach your bank|be received)\\b[^.!?]{0,100}?\\b(?:on\\s+)?(${monthNames})\\s+(\\d{1,2}),?\\s+(\\d{4})\\b`,
     "i"
   );
 
-  let arrivalDateMatch = arrivalClaim
-    ? getCalendarDateMatch(response, arrivalDatePattern)
-    : null;
+  const arrivalDateMatches = arrivalClaim
+    ? getConnectedCalendarDateMatches(
+        response,
+        getCalendarDateMatches(response, arrivalDatePattern),
+        monthNames
+      )
+    : [];
 
   // Allow an immediate "It" reference to inherit the refund subject
-  // from the preceding sentence when verifying a payout-arrival date.
-  if (arrivalClaim && !arrivalDateMatch) {
+  // from the preceding sentence when verifying payout-arrival dates.
+  if (arrivalClaim) {
     const sentences = Array.from(
       response.matchAll(/[^.!?]+[.!?]?/g)
     );
@@ -181,12 +231,14 @@ export function evaluateRefundPromise(response, context) {
         continue;
       }
 
-      const referencedMatch = getCalendarDateMatch(
-        `refund ${trimmedSentence}`,
-        arrivalDatePattern
+      const referencedResponse = `refund ${trimmedSentence}`;
+      const referencedMatches = getConnectedCalendarDateMatches(
+        referencedResponse,
+        getCalendarDateMatches(referencedResponse, arrivalDatePattern),
+        monthNames
       );
 
-      if (!referencedMatch) {
+      if (referencedMatches.length === 0) {
         continue;
       }
 
@@ -196,19 +248,21 @@ export function evaluateRefundPromise(response, context) {
       const sentenceStart =
         sentences[index].index + leadingWhitespace;
 
-      arrivalDateMatch = {
-        ...referencedMatch,
-        text: trimmedSentence,
-        index: sentenceStart,
-        endIndex: sentenceStart + trimmedSentence.length
-      };
-
-      break;
+      for (const referencedMatch of referencedMatches) {
+        arrivalDateMatches.push({
+          ...referencedMatch,
+          text: trimmedSentence,
+          index: sentenceStart,
+          endIndex: sentenceStart + trimmedSentence.length
+        });
+      }
     }
+
+    arrivalDateMatches.sort((a, b) => a.index - b.index);
   }
 
   const completionDateClaim = completionDateMatch !== null;
-  const arrivalDateClaim = arrivalDateMatch !== null;
+  const arrivalDateClaim = arrivalDateMatches.length > 0;
   const evidence = [];
 
   // Collect both records before evaluating either claim.
@@ -224,15 +278,17 @@ export function evaluateRefundPromise(response, context) {
   }
 
   if (arrivalDateClaim) {
-    evidence.push(
-      createDateEvidence(
-        "payout_arrival_date",
-        arrivalDateMatch,
-        payoutExpectedAt,
-        "payout_expected_at",
-        payoutEstimateSource
-      )
-    );
+    for (const match of arrivalDateMatches) {
+      evidence.push(
+        createDateEvidence(
+          "payout_arrival_date",
+          match,
+          payoutExpectedAt,
+          "payout_expected_at",
+          payoutEstimateSource
+        )
+      );
+    }
   }
 
   // A completion date can only be supported by the verified completion date.
@@ -290,7 +346,11 @@ export function evaluateRefundPromise(response, context) {
   }
 
   if (arrivalDateClaim) {
-    if (!arrivalDateMatch.valid) {
+    const hasInvalidDate = arrivalDateMatches.some(
+      (match) => !match.valid
+    );
+
+    if (hasInvalidDate) {
       return createResult(
         "unsupported_refund_promise",
         false,
@@ -300,14 +360,16 @@ export function evaluateRefundPromise(response, context) {
       );
     }
 
-    const matches = arrivalDateMatch.value === payoutExpectedAt;
+    const hasConflictingDate = arrivalDateMatches.some(
+      (match) => match.value !== payoutExpectedAt
+    );
 
     return createResult(
       "unsupported_refund_promise",
-      matches,
-      matches
-        ? "The promised arrival date matches the verified payout estimate."
-        : "The promised arrival date conflicts with the verified payout estimate.",
+      !hasConflictingDate,
+      hasConflictingDate
+        ? "One or more promised arrival dates conflict with the verified payout estimate."
+        : "The promised arrival dates match the verified payout estimate.",
       undefined,
       evidence
     );
