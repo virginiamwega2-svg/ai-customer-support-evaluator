@@ -4,6 +4,7 @@
   "description": "A rule-based evaluator for checking AI customer-support responses against verified business context.",
   "type": "module",
   "scripts": {
-    "test": "node --test"
+    "test": "node --test",
+    "benchmark": "node benchmark.js"
   }
 }
