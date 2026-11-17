@@ -144,5 +144,51 @@
         "expected_status_passed": true
       }
     ]
+  },
+  {
+    "id": "REF-004",
+    "scenario": "bank_arrival_without_verified_estimate",
+    "customer_message": "When should my refund reach my bank account?",
+    "context": {
+      "refund_status": "processing",
+      "tracking_path": "Orders → Refunds",
+      "refund_completed_at": null,
+      "payout_expected_at": null,
+      "payout_estimate_source": null
+    },
+    "expected_behavior": "Do not promise a bank-arrival timeframe when no verified payout estimate exists.",
+    "reference_answer": "Your refund is still being processed, but no bank-arrival estimate has been confirmed. You can check for updates under Orders → Refunds.",
+    "responses": [
+      {
+        "response_id": "A",
+        "text": "Your refund is expected to reach your bank by the end of this week.",
+        "expected_passed": false,
+        "expected_tracking_passed": false,
+        "expected_status_passed": false
+      }
+    ]
+  },
+  {
+    "id": "REF-005",
+    "scenario": "bank_arrival_with_verified_estimate",
+    "customer_message": "When should I expect my refund in my bank account?",
+    "context": {
+      "refund_status": "processing",
+      "tracking_path": "Orders → Refunds",
+      "refund_completed_at": null,
+      "payout_expected_at": "2026-11-20",
+      "payout_estimate_source": "Verified payment processor estimate"
+    },
+    "expected_behavior": "Allow a specific bank-arrival date only when it matches the verified payout estimate, while preserving accurate refund status and tracking information.",
+    "reference_answer": "Your refund is still being processed. It is expected to reach your bank on November 20, 2026. You can check for updates under Orders → Refunds.",
+    "responses": [
+      {
+        "response_id": "A",
+        "text": "Your refund is still being processed. It is expected to reach your bank on November 20, 2026. Check Orders → Refunds.",
+        "expected_passed": true,
+        "expected_tracking_passed": true,
+        "expected_status_passed": true
+      }
+    ]
   }
 ]

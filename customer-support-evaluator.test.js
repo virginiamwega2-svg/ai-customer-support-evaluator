@@ -913,3 +913,73 @@ test("records evidence for each verified tracking step", () => {
     })
   );
 });
+
+test("returns unknown when a bank-arrival timeframe has no verified payout estimate", () => {
+  const result = evaluateRefundPromise(
+    "Your refund is expected to reach your bank by the end of this week.",
+    context
+  );
+
+  assert.equal(result.verdict, "unknown");
+  assert.equal(result.passed, false);
+});
+
+test("accepts a bank-arrival date supported by a verified payout estimate", () => {
+  const verifiedPayoutContext = {
+    refund_status: "processing",
+    refund_completed_at: null,
+    payout_expected_at: "2026-11-13",
+    payout_estimate_source: "Verified payment processor estimate",
+    tracking_path: "Orders → Refunds"
+  };
+
+  const result = evaluateRefundPromise(
+    "Your refund is expected to reach your bank on November 13, 2026.",
+    verifiedPayoutContext
+  );
+
+  assert.equal(result.verdict, "pass");
+  assert.equal(result.passed, true);
+});
+
+test("associates a bank-arrival date with a refund referenced in the previous sentence", () => {
+  const response =
+    "Your refund is still being processed. It is expected to reach your bank on November 20, 2026. Check Orders → Refunds.";
+
+  const verifiedPayoutContext = {
+    refund_status: "processing",
+    refund_completed_at: null,
+    payout_expected_at: "2026-11-20",
+    payout_estimate_source: "Verified payment processor estimate",
+    tracking_path: "Orders → Refunds"
+  };
+
+  const result = evaluateRefundPromise(response, verifiedPayoutContext);
+
+  assert.equal(result.verdict, "pass");
+  assert.equal(result.passed, true);
+  assert.equal(result.evidence.length, 1);
+
+  assert.equal(result.evidence[0].claimType, "payout_arrival_date");
+  assert.equal(result.evidence[0].claimedValue, "2026-11-20");
+  assert.equal(result.evidence[0].verifiedValue, "2026-11-20");
+  assert.equal(
+    result.evidence[0].verifiedField,
+    "payout_expected_at"
+  );
+  assert.equal(
+    result.evidence[0].verifiedSource,
+    "Verified payment processor estimate"
+  );
+
+  const expectedExcerpt =
+    "It is expected to reach your bank on November 20, 2026.";
+  const expectedStart = response.indexOf(expectedExcerpt);
+
+  assert.equal(result.evidence[0].responseExcerpt, expectedExcerpt);
+  assert.equal(result.evidence[0].startIndex, expectedStart);
+  assert.equal(
+    result.evidence[0].endIndex,
+    expectedStart + expectedExcerpt.length
+  );
+});

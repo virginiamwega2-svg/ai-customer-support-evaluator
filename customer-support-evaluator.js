@@ -137,7 +137,7 @@ export function evaluateRefundPromise(response, context) {
     "January|February|March|April|May|June|July|August|September|October|November|December";
 
   const arrivalClaim =
-    /\b(?:refund|money|funds)\b.{0,100}\b(?:arrive|be credited|reach you|be received)\b/i.test(response) ||
+    /\b(?:refund|money|funds)\b.{0,100}\b(?:arrive|be credited|reach you|reach your bank|be received)\b/i.test(response) ||
     /\b(?:expect|expected)\s+(?:your\s+)?(?:refund|money|funds)\b/i.test(response);
 
   const completionClaim =
@@ -153,15 +153,59 @@ export function evaluateRefundPromise(response, context) {
       )
     : null;
 
-  const arrivalDateMatch = arrivalClaim
-    ? getCalendarDateMatch(
-        response,
-        new RegExp(
-          `\\b(?:refund|money|funds)\\b[^.!?]{0,100}\\b(?:arrive|be credited|reach you|be received)\\b[^.!?]{0,100}\\b(?:on\\s+)?(${monthNames})\\s+(\\d{1,2}),?\\s+(\\d{4})\\b`,
-          "i"
-        )
-      )
+  const arrivalDatePattern = new RegExp(
+    `\\b(?:refund|money|funds)\\b[^.!?]{0,100}\\b(?:arrive|be credited|reach you|reach your bank|be received)\\b[^.!?]{0,100}\\b(?:on\\s+)?(${monthNames})\\s+(\\d{1,2}),?\\s+(\\d{4})\\b`,
+    "i"
+  );
+
+  let arrivalDateMatch = arrivalClaim
+    ? getCalendarDateMatch(response, arrivalDatePattern)
     : null;
+
+  // Allow an immediate "It" reference to inherit the refund subject
+  // from the preceding sentence when verifying a payout-arrival date.
+  if (arrivalClaim && !arrivalDateMatch) {
+    const sentences = Array.from(
+      response.matchAll(/[^.!?]+[.!?]?/g)
+    );
+
+    for (let index = 1; index < sentences.length; index++) {
+      const previousSentence = sentences[index - 1][0];
+      const currentSentence = sentences[index][0];
+      const trimmedSentence = currentSentence.trim();
+
+      if (
+        !/\b(?:refund|money|funds)\b/i.test(previousSentence) ||
+        !/^It\b/i.test(trimmedSentence)
+      ) {
+        continue;
+      }
+
+      const referencedMatch = getCalendarDateMatch(
+        `refund ${trimmedSentence}`,
+        arrivalDatePattern
+      );
+
+      if (!referencedMatch) {
+        continue;
+      }
+
+      const leadingWhitespace =
+        currentSentence.length - currentSentence.trimStart().length;
+
+      const sentenceStart =
+        sentences[index].index + leadingWhitespace;
+
+      arrivalDateMatch = {
+        ...referencedMatch,
+        text: trimmedSentence,
+        index: sentenceStart,
+        endIndex: sentenceStart + trimmedSentence.length
+      };
+
+      break;
+    }
+  }
 
   const completionDateClaim = completionDateMatch !== null;
   const arrivalDateClaim = arrivalDateMatch !== null;
@@ -270,7 +314,7 @@ export function evaluateRefundPromise(response, context) {
   }
 
   const weekdayMatch = response.match(
-    /\b(?:refund|money|funds)\b.{0,100}\b(?:arrive|be credited|reach you|be received)\b.{0,60}\b(?:by|on|next)\s+(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)\b/i
+    /\b(?:refund|money|funds)\b.{0,100}\b(?:arrive|be credited|reach you|reach your bank|be received)\b.{0,60}\b(?:by|on|next)\s+(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)\b/i
   );
 
   if (weekdayMatch) {
