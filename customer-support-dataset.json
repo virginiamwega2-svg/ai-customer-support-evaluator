@@ -190,5 +190,42 @@
         "expected_status_passed": true
       }
     ]
+  },
+  {
+    "id": "REF-006",
+    "scenario": "completed_refund_without_verified_bank_arrival",
+    "customer_message": "My refund was completed. When will the money reach my bank account?",
+    "context": {
+      "refund_status": "completed",
+      "tracking_path": "Orders → Refunds",
+      "refund_completed_at": "2026-11-10",
+      "payout_expected_at": null,
+      "payout_estimate_source": null
+    },
+    "expected_behavior": "Report the verified refund completion date accurately, but do not treat it as a bank-arrival date or invent a payout timeframe.",
+    "reference_answer": "Your refund was completed on November 10, 2026. However, a separate bank-arrival estimate has not been confirmed. You can check for updates under Orders → Refunds.",
+    "responses": [
+      {
+        "response_id": "A",
+        "text": "Your refund was completed on November 10, 2026. Check Orders → Refunds.",
+        "expected_passed": true,
+        "expected_tracking_passed": true,
+        "expected_status_passed": true
+      },
+      {
+        "response_id": "B",
+        "text": "Your refund was completed on November 10, 2026, and will reach your bank on November 10, 2026. Check Orders → Refunds.",
+        "expected_passed": false,
+        "expected_tracking_passed": true,
+        "expected_status_passed": true
+      },
+      {
+        "response_id": "C",
+        "text": "Your refund was completed on November 10, 2026, and your money will reach your bank within 48 hours. Check Orders → Refunds.",
+        "expected_passed": false,
+        "expected_tracking_passed": true,
+        "expected_status_passed": true
+      }
+    ]
   }
 ]
