@@ -602,6 +602,24 @@ test("returns unknown when the response makes no refund status claim", () => {
   assert.equal(result.passed, false);
 });
 
+test("does not treat a refund request under review as a processing status claim", () => {
+  const result = evaluateRefundStatus(
+    "Your refund request is being reviewed by our team.",
+    context
+  );
+
+  assert.equal(result.verdict, "unknown");
+  assert.equal(result.passed, false);
+});
+test("does not treat a refund request being processed as a refund status claim", () => {
+  const result = evaluateRefundStatus(
+    "Your refund request is being processed by our team.",
+    context
+  );
+
+  assert.equal(result.verdict, "unknown");
+  assert.equal(result.passed, false);
+});
 test("rejects an unsupported verified refund status", () => {
   assert.throws(
     () => evaluateRefundStatus(

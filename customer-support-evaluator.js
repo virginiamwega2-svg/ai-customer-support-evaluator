@@ -484,7 +484,7 @@ export function evaluateRefundStatus(response, context) {
 
   const claims = {
     processing:
-      /\b(?:refund|money)\b.{0,60}\b(?:(?<!not )(?<!never )(?<!isn't )(?<!wasn't )(?<!hasn't )(?:is being processed|is processing|still processing|being processed|is pending))\b/i,
+      /\b(?:refund|money)\b(?!\s+request\b).{0,60}\b(?:(?<!not )(?<!never )(?<!isn't )(?<!wasn't )(?<!hasn't )(?:is being processed|is processing|still processing|being processed|is pending))\b/i,
 
     completed:
       /\b(?:refund|money)\b(?:(?!\b(?:not|never|hasn't|isn't|wasn't)\b).){0,60}\b(?:has been processed successfully|has been processed|was processed successfully|processed successfully|has been completed|was completed|is complete|has completed|was successful|is successful|succeeded)\b/i,
