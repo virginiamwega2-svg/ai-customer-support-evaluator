@@ -391,6 +391,39 @@ test("records an arrival date as unverified when no payout estimate exists", () 
   );
 });
 
+test("rejects a payout expected date when its source is missing", () => {
+  assert.throws(
+    () => evaluateRefundPromise(
+      "Your money will arrive on November 13, 2026.",
+      {
+        refund_completed_at: "2026-11-10",
+        payout_expected_at: "2026-11-13",
+        payout_estimate_source: null
+      }
+    ),
+    {
+      name: "TypeError",
+      message: "A verified payout estimate source is required."
+    }
+  );
+});
+
+test("rejects a payout estimate source when its date is missing", () => {
+  assert.throws(
+    () => evaluateRefundPromise(
+      "Your money will arrive on November 13, 2026.",
+      {
+        refund_completed_at: "2026-11-10",
+        payout_expected_at: null,
+        payout_estimate_source: "Verified payment processor estimate"
+      }
+    ),
+    {
+      name: "TypeError",
+      message: "A payout estimate source cannot be provided without a payout expected date."
+    }
+  );
+});
 // Tracking instruction evaluation tests
 // --------------------------------------------------
 
