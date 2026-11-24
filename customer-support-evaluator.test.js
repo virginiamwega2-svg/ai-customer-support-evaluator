@@ -29,13 +29,22 @@ const context = {
 // --------------------------------------------------
 
 test("returns unknown when an arrival promise has no verified payout estimate", () => {
+  const response = "Your refund will arrive tomorrow.";
   const result = evaluateRefundPromise(
-    "Your refund will arrive tomorrow.",
+    response,
     context
   );
 
   assert.equal(result.verdict, "unknown");
   assert.equal(result.passed, false);
+  assert.equal(result.evidence.length, 1);
+  assert.equal(result.evidence[0].claimType, "payout_arrival_claim");
+  assert.equal(result.evidence[0].responseExcerpt, response);
+  assert.equal(result.evidence[0].claimedValue, response);
+  assert.equal(
+    response.slice(result.evidence[0].startIndex, result.evidence[0].endIndex),
+    result.evidence[0].responseExcerpt
+  );
 });
 
 test("passes a response that does not promise an unconfirmed date", () => {
@@ -600,6 +609,7 @@ test("returns unknown when the response makes no refund status claim", () => {
 
   assert.equal(result.verdict, "unknown");
   assert.equal(result.passed, false);
+  assert.equal("evidence" in result, false);
 });
 
 test("does not treat a refund request under review as a processing status claim", () => {
@@ -840,13 +850,22 @@ test("returns unknown when an arrival timeframe cannot be verified against a pay
     tracking_path: "Orders → Refunds"
   };
 
+  const response = "Your refund will arrive within three business days.";
   const result = evaluateRefundPromise(
-    "Your refund will arrive within three business days.",
+    response,
     verifiedPayoutContext
   );
 
   assert.equal(result.verdict, "unknown");
   assert.equal(result.passed, false);
+  assert.equal(result.evidence.length, 1);
+  assert.equal(result.evidence[0].claimType, "payout_arrival_claim");
+  assert.equal(result.evidence[0].responseExcerpt, response);
+  assert.equal(result.evidence[0].claimedValue, response);
+  assert.equal(
+    response.slice(result.evidence[0].startIndex, result.evidence[0].endIndex),
+    result.evidence[0].responseExcerpt
+  );
 });
 
 test("recognizes a refund described as processed", () => {
@@ -1114,4 +1133,80 @@ test("does not treat an unrelated coordinated date as another refund arrival cla
   assert.equal(result.evidence.length, 1);
   assert.equal(result.evidence[0].claimedValue, "2026-11-20");
   assert.equal(result.evidence[0].verifiedValue, "2026-11-20");
+});
+
+test("returns unknown when a verified arrival date is accompanied by an unverifiable arrival timeframe", () => {
+  const verifiedPayoutContext = {
+    refund_status: "processing",
+    refund_completed_at: null,
+    payout_expected_at: "2026-11-20",
+    payout_estimate_source: "Verified payment processor estimate",
+    tracking_path: "Orders → Refunds"
+  };
+
+  const response =
+    "Your refund will arrive on November 20, 2026. Your refund will also arrive within three business days.";
+
+  const result = evaluateRefundPromise(
+    response,
+    verifiedPayoutContext
+  );
+
+  assert.equal(result.verdict, "unknown");
+  assert.equal(result.passed, false);
+  assert.equal(result.evidence.length, 2);
+
+  assert.deepEqual(
+    result.evidence.map((item) => item.claimType),
+    ["payout_arrival_date", "payout_arrival_claim"]
+  );
+
+  for (const item of result.evidence) {
+    assert.equal(
+      response.slice(item.startIndex, item.endIndex),
+      item.responseExcerpt
+    );
+  }
+});
+
+test("passes when a verified arrival date and matching weekday are both promised", () => {
+  const verifiedPayoutContext = {
+    refund_status: "processing",
+    refund_completed_at: null,
+    payout_expected_at: "2026-11-20",
+    payout_estimate_source: "Verified payment processor estimate",
+    tracking_path: "Orders → Refunds"
+  };
+
+  const response =
+    "Your refund will arrive on November 20, 2026. Your refund will also arrive by Friday.";
+
+  const result = evaluateRefundPromise(
+    response,
+    verifiedPayoutContext
+  );
+
+  assert.equal(result.verdict, "pass");
+  assert.equal(result.passed, true);
+});
+
+test("fails when a verified arrival date is accompanied by a conflicting weekday", () => {
+  const verifiedPayoutContext = {
+    refund_status: "processing",
+    refund_completed_at: null,
+    payout_expected_at: "2026-11-20",
+    payout_estimate_source: "Verified payment processor estimate",
+    tracking_path: "Orders → Refunds"
+  };
+
+  const response =
+    "Your refund will arrive on November 20, 2026. Your refund will also arrive by Thursday.";
+
+  const result = evaluateRefundPromise(
+    response,
+    verifiedPayoutContext
+  );
+
+  assert.equal(result.verdict, "fail");
+  assert.equal(result.passed, false);
 });

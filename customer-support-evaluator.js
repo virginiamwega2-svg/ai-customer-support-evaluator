@@ -291,6 +291,52 @@ export function evaluateRefundPromise(response, context) {
     }
   }
 
+  if (arrivalClaim) {
+    const arrivalClaimPattern =
+      /\b(?:refund|money|funds)\b.{0,100}\b(?:arrive|be credited|reach you|reach your bank|be received)\b|\b(?:expect|expected)\s+(?:your\s+)?(?:refund|money|funds)\b/i;
+
+    const sentences = Array.from(
+      response.matchAll(/[^.!?]+[.!?]?/g)
+    );
+
+    for (const sentence of sentences) {
+      const excerpt = sentence[0].trim();
+
+      if (!arrivalClaimPattern.test(excerpt)) {
+        continue;
+      }
+
+      const sentenceStart = sentence.index;
+      const sentenceEnd = sentenceStart + sentence[0].length;
+
+      const containsCalendarArrivalDate = arrivalDateMatches.some(
+        (match) =>
+          match.index >= sentenceStart &&
+          match.index < sentenceEnd
+      );
+
+      if (containsCalendarArrivalDate) {
+        continue;
+      }
+
+      const leadingWhitespace =
+        sentence[0].length - sentence[0].trimStart().length;
+
+      const startIndex = sentence.index + leadingWhitespace;
+
+      evidence.push({
+        claimType: "payout_arrival_claim",
+        claimedValue: excerpt,
+        verifiedValue: payoutExpectedAt,
+        verifiedField: payoutExpectedAt ? "payout_expected_at" : null,
+        verifiedSource: payoutEstimateSource,
+        responseExcerpt: excerpt,
+        startIndex,
+        endIndex: startIndex + excerpt.length
+      });
+    }
+  }
+
   // A completion date can only be supported by the verified completion date.
   if (completionDateClaim) {
     if (!completionDateMatch.valid) {
@@ -364,12 +410,58 @@ export function evaluateRefundPromise(response, context) {
       (match) => match.value !== payoutExpectedAt
     );
 
+    const weekdayPattern =
+      /\b(?:refund|money|funds)\b.{0,100}\b(?:arrive|be credited|reach you|reach your bank|be received)\b.{0,60}\b(?:by|on|next)\s+(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)\b/i;
+
+    const weekdayClaims = evidence.filter(
+      (item) =>
+        item.claimType === "payout_arrival_claim" &&
+        weekdayPattern.test(item.responseExcerpt)
+    );
+
+    const expectedWeekday = getWeekday(payoutExpectedAt);
+
+    const hasConflictingWeekday = weekdayClaims.some((item) => {
+      const match = item.responseExcerpt.match(weekdayPattern);
+
+      return (
+        match &&
+        match[1].toLowerCase() !== expectedWeekday.toLowerCase()
+      );
+    });
+
+    const hasUnverifiableRelativeClaim = evidence.some(
+      (item) =>
+        item.claimType === "payout_arrival_claim" &&
+        !weekdayPattern.test(item.responseExcerpt)
+    );
+
+    if (hasConflictingDate || hasConflictingWeekday) {
+      return createResult(
+        "unsupported_refund_promise",
+        false,
+        hasConflictingDate
+          ? "One or more promised arrival dates conflict with the verified payout estimate."
+          : "One or more promised arrival weekdays conflict with the verified payout estimate.",
+        undefined,
+        evidence
+      );
+    }
+
+    if (hasUnverifiableRelativeClaim) {
+      return createResult(
+        "unsupported_refund_promise",
+        false,
+        "A calendar arrival date matches, but an additional relative arrival timeframe cannot be verified.",
+        "unknown",
+        evidence
+      );
+    }
+
     return createResult(
       "unsupported_refund_promise",
-      !hasConflictingDate,
-      hasConflictingDate
-        ? "One or more promised arrival dates conflict with the verified payout estimate."
-        : "The promised arrival dates match the verified payout estimate.",
+      true,
+      "The promised arrival dates and any weekday claims match the verified payout estimate.",
       undefined,
       evidence
     );
