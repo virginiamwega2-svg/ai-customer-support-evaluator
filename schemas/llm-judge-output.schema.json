@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AI Customer Support LLM Judge Output",
+  "description": "Structured evaluation results for the three customer-support response evaluation dimensions.",
+  "type": "object",
+  "required": [
+    "refund_promise",
+    "tracking_instruction",
+    "refund_status"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "refund_promise": {
+      "$ref": "#/$defs/dimension_result"
+    },
+    "tracking_instruction": {
+      "$ref": "#/$defs/dimension_result"
+    },
+    "refund_status": {
+      "$ref": "#/$defs/dimension_result"
+    }
+  },
+  "$defs": {
+    "dimension_result": {
+      "type": "object",
+      "required": [
+        "verdict",
+        "reason",
+        "response_evidence",
+        "context_evidence"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "verdict": {
+          "type": "string",
+          "enum": [
+            "pass",
+            "fail",
+            "unknown"
+          ]
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        },
+        "response_evidence": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1
+        },
+        "context_evidence": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1
+        }
+      }
+    }
+  }
+}

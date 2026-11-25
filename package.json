@@ -1,10 +1,17 @@
 {
   "name": "ai-customer-support-evaluator",
   "version": "1.0.0",
-  "description": "A rule-based evaluator for checking AI customer-support responses against verified business context.",
+  "description": "An AI customer-support response evaluator combining deterministic checks and optional LLM-as-a-Judge evaluation against verified business context.",
   "type": "module",
   "scripts": {
     "test": "node --test",
-    "benchmark": "node benchmark.js"
+    "benchmark": "node benchmark.js",
+    "llm-benchmark": "node --env-file=.env llm-benchmark.js"
+  },
+  "devDependencies": {
+    "ajv": "^8.20.0"
+  },
+  "dependencies": {
+    "openai": "^7.32.0"
   }
 }
