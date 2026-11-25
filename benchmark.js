@@ -6,30 +6,34 @@ import {
   evaluateRefundStatus
 } from "./customer-support-evaluator.js";
 
+const useHeldout = process.argv.includes("--heldout");
+const datasetFile = useHeldout
+  ? "./customer-support-heldout.json"
+  : "./customer-support-dataset.json";
+
 const dataset = JSON.parse(
-  readFileSync(
-    new URL("./customer-support-dataset.json", import.meta.url),
-    "utf8"
-  )
+  readFileSync(new URL(datasetFile, import.meta.url), "utf8")
 );
 
 const dimensions = [
   {
     label: "Refund promise accuracy",
-    expectedKey: "expected_passed",
+    expectedKey: "expected_verdict",
     evaluate: evaluateRefundPromise
   },
   {
     label: "Tracking instruction accuracy",
-    expectedKey: "expected_tracking_passed",
+    expectedKey: "expected_tracking_verdict",
     evaluate: evaluateTrackingInstruction
   },
   {
     label: "Refund status consistency",
-    expectedKey: "expected_status_passed",
+    expectedKey: "expected_status_verdict",
     evaluate: evaluateRefundStatus
   }
 ];
+
+const validVerdicts = ["pass", "fail", "unknown"];
 
 function percentage(numerator, denominator) {
   return denominator === 0
@@ -47,7 +51,7 @@ const totalResponses = dataset.reduce(
 );
 
 console.log("AI CUSTOMER SUPPORT EVALUATOR");
-console.log("BASELINE BENCHMARK");
+console.log(useHeldout ? "HELD-OUT EVALUATION" : "BASELINE BENCHMARK");
 console.log(`${dataset.length} scenarios | ${totalResponses} responses`);
 
 for (const dimension of dimensions) {
@@ -58,20 +62,27 @@ for (const dimension of dimensions) {
     trueNegative: 0
   };
 
-  let unknownCount = 0;
-  let unknownExpectedPass = 0;
-  let unknownExpectedNotPass = 0;
+  const verdictCounts = {
+    pass: 0,
+    fail: 0,
+    unknown: 0
+  };
+
+  let correctAbstentions = 0;
+  let unnecessaryAbstentions = 0;
+  let missedAbstentions = 0;
+  let exactMatches = 0;
   let responseCount = 0;
 
   const disagreements = [];
 
   for (const scenario of dataset) {
     for (const response of scenario.responses) {
-      const expectedPass = response[dimension.expectedKey];
+      const expectedVerdict = response[dimension.expectedKey];
 
-      if (typeof expectedPass !== "boolean") {
+      if (!validVerdicts.includes(expectedVerdict)) {
         throw new Error(
-          `Missing or invalid expected label: ${scenario.id}/${response.response_id}`
+          `Missing or invalid expected verdict: ${scenario.id}/${response.response_id}`
         );
       }
 
@@ -80,27 +91,45 @@ for (const dimension of dimensions) {
         scenario.context
       );
 
-      if (!["pass", "fail", "unknown"].includes(result.verdict)) {
+      if (!validVerdicts.includes(result.verdict)) {
         throw new Error(
           `Invalid evaluator verdict: ${scenario.id}/${response.response_id}`
         );
       }
 
+      const actualVerdict = result.verdict;
+
       responseCount++;
+      verdictCounts[actualVerdict]++;
 
-      if (result.verdict === "unknown") {
-        unknownCount++;
+      if (expectedVerdict === actualVerdict) {
+        exactMatches++;
+      } else {
+        disagreements.push({
+          scenario: scenario.id,
+          response: response.response_id,
+          expected: expectedVerdict.toUpperCase(),
+          actual: actualVerdict.toUpperCase()
+        });
+      }
 
-        if (expectedPass) {
-          unknownExpectedPass++;
+      if (expectedVerdict === "unknown") {
+        if (actualVerdict === "unknown") {
+          correctAbstentions++;
         } else {
-          unknownExpectedNotPass++;
+          missedAbstentions++;
         }
 
         continue;
       }
 
-      const actualPass = result.verdict === "pass";
+      if (actualVerdict === "unknown") {
+        unnecessaryAbstentions++;
+        continue;
+      }
+
+      const expectedPass = expectedVerdict === "pass";
+      const actualPass = actualVerdict === "pass";
 
       if (expectedPass && actualPass) {
         counts.truePositive++;
@@ -111,19 +140,22 @@ for (const dimension of dimensions) {
       } else {
         counts.trueNegative++;
       }
-
-      if (expectedPass !== actualPass) {
-        disagreements.push({
-          scenario: scenario.id,
-          response: response.response_id,
-          expected: expectedPass ? "PASS" : "NOT PASS",
-          actual: result.verdict.toUpperCase()
-        });
-      }
     }
   }
 
-  const definitiveCount = responseCount - unknownCount;
+  const definitiveCount =
+    verdictCounts.pass + verdictCounts.fail;
+
+  const expectedDefinitiveCount =
+    responseCount -
+    dataset.reduce(
+      (total, scenario) =>
+        total +
+        scenario.responses.filter(
+          (response) => response[dimension.expectedKey] === "unknown"
+        ).length,
+      0
+    );
 
   const precision = percentage(
     counts.truePositive,
@@ -144,30 +176,52 @@ for (const dimension of dimensions) {
 
   const accuracy = percentage(
     counts.truePositive + counts.trueNegative,
-    definitiveCount
+    counts.truePositive +
+      counts.falsePositive +
+      counts.falseNegative +
+      counts.trueNegative
   );
 
+  const exactAccuracy = percentage(exactMatches, responseCount);
   const coverage = percentage(definitiveCount, responseCount);
-  const abstentionRate = percentage(unknownCount, responseCount);
+  const abstentionRate = percentage(
+    verdictCounts.unknown,
+    responseCount
+  );
 
   console.log(`\n--- ${dimension.label} ---`);
   console.log(`Total responses: ${responseCount}`);
-  console.log(`Definitive verdicts: ${definitiveCount}`);
+  console.log(`Actual pass verdicts: ${verdictCounts.pass}`);
+  console.log(`Actual fail verdicts: ${verdictCounts.fail}`);
+  console.log(`Actual unknown verdicts: ${verdictCounts.unknown}`);
+
+  console.log("\nThree-way verdict evaluation:");
+  console.log(`Exact verdict matches: ${exactMatches}`);
+  console.log(`Exact verdict accuracy: ${formatPercentage(exactAccuracy)}`);
+
+  console.log("\nAbstention evaluation:");
+  console.log(`Correct abstentions: ${correctAbstentions}`);
+  console.log(`Unnecessary abstentions: ${unnecessaryAbstentions}`);
+  console.log(`Missed abstentions: ${missedAbstentions}`);
+
+  console.log("\nBinary confusion matrix (definitive cases only):");
   console.log(`True positives: ${counts.truePositive}`);
   console.log(`False positives: ${counts.falsePositive}`);
   console.log(`False negatives: ${counts.falseNegative}`);
   console.log(`True negatives: ${counts.trueNegative}`);
-  console.log(`Unknown verdicts: ${unknownCount}`);
-  console.log(`Unknowns expected to pass: ${unknownExpectedPass}`);
-  console.log(`Unknowns expected not to pass: ${unknownExpectedNotPass}`);
-  console.log(`Coverage: ${formatPercentage(coverage)}`);
-  console.log(`Abstention rate: ${formatPercentage(abstentionRate)}`);
+
+  console.log("\nBinary classification metrics:");
   console.log(`Precision: ${formatPercentage(precision)}`);
   console.log(`Recall: ${formatPercentage(recall)}`);
   console.log(`F1 score: ${formatPercentage(f1)}`);
-  console.log(`Accuracy: ${formatPercentage(accuracy)}`);
+  console.log(`Binary accuracy: ${formatPercentage(accuracy)}`);
 
-  console.log("Definitive classification disagreements:");
+  console.log("\nCoverage:");
+  console.log(`Coverage: ${formatPercentage(coverage)}`);
+  console.log(`Abstention rate: ${formatPercentage(abstentionRate)}`);
+  console.log(`Expected definitive cases: ${expectedDefinitiveCount}`);
+
+  console.log("\nVerdict disagreements:");
 
   if (disagreements.length === 0) {
     console.log("None");

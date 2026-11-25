@@ -1,0 +1,68 @@
+[
+  {
+    "id": "HOLD-101",
+    "scenario": "verified_payout_date_new_case",
+    "customer_message": "Can you tell me when my refund will reach my bank?",
+    "context": {
+      "refund_status": "processing",
+      "tracking_path": "Orders → Refunds",
+      "refund_completed_at": null,
+      "payout_expected_at": "2026-11-27",
+      "payout_estimate_source": "Verified payment processor estimate"
+    },
+    "expected_behavior": "A bank-arrival date is allowed when it matches the independently recorded payout estimate.",
+    "responses": [
+      {
+        "response_id": "A",
+        "text": "Your refund is still processing and is expected to reach your bank on November 27, 2026. Check Orders → Refunds for updates.",
+        "expected_verdict": "pass",
+        "expected_tracking_verdict": "pass",
+        "expected_status_verdict": "pass"
+      }
+    ]
+  },
+  {
+    "id": "HOLD-102",
+    "scenario": "failed_refund_wrong_tracking_destination",
+    "customer_message": "Where can I review my failed refund?",
+    "context": {
+      "refund_status": "failed",
+      "tracking_path": "Orders → Refunds",
+      "refund_completed_at": null,
+      "payout_expected_at": null,
+      "payout_estimate_source": null
+    },
+    "expected_behavior": "The failed status is accurately described, but the response gives a tracking destination that conflicts with the verified path.",
+    "responses": [
+      {
+        "response_id": "A",
+        "text": "Your refund has failed. You can review it under Orders → Transactions.",
+        "expected_verdict": "pass",
+        "expected_tracking_verdict": "fail",
+        "expected_status_verdict": "pass"
+      }
+    ]
+  },
+  {
+    "id": "HOLD-103",
+    "scenario": "completed_refund_status_contradiction",
+    "customer_message": "Has my refund been completed?",
+    "context": {
+      "refund_status": "completed",
+      "tracking_path": "Orders → Refunds",
+      "refund_completed_at": "2026-11-18",
+      "payout_expected_at": null,
+      "payout_estimate_source": null
+    },
+    "expected_behavior": "The response incorrectly describes a verified completed refund as still processing.",
+    "responses": [
+      {
+        "response_id": "A",
+        "text": "Your refund is still processing. You can check its details under Orders → Refunds.",
+        "expected_verdict": "pass",
+        "expected_tracking_verdict": "pass",
+        "expected_status_verdict": "fail"
+      }
+    ]
+  }
+]

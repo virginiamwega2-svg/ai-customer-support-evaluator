@@ -16,44 +16,44 @@
       {
         "response_id": "A",
         "text": "Your refund will arrive tomorrow.",
-        "expected_passed": false,
-        "expected_tracking_passed": false,
-        "expected_status_passed": false
+        "expected_verdict": "unknown",
+        "expected_tracking_verdict": "fail",
+        "expected_status_verdict": "unknown"
       },
       {
         "response_id": "B",
         "text": "I'm sorry your refund hasn't arrived yet. It is still being processed, and a completion date hasn't been confirmed. You can check for updates under Orders → Refunds.",
-        "expected_passed": true,
-        "expected_tracking_passed": true,
-        "expected_status_passed": true
+        "expected_verdict": "pass",
+        "expected_tracking_verdict": "pass",
+        "expected_status_verdict": "pass"
       },
       {
         "response_id": "C",
         "text": "You can expect your refund to arrive in 48 hours.",
-        "expected_passed": false,
-        "expected_tracking_passed": false,
-        "expected_status_passed": false
+        "expected_verdict": "unknown",
+        "expected_tracking_verdict": "fail",
+        "expected_status_verdict": "unknown"
       },
       {
         "response_id": "D",
         "text": "Your refund has been completed.",
-        "expected_passed": true,
-        "expected_tracking_passed": false,
-        "expected_status_passed": false
+        "expected_verdict": "pass",
+        "expected_tracking_verdict": "fail",
+        "expected_status_verdict": "fail"
       },
       {
         "response_id": "E",
         "text": "Your refund has not failed. It is still being processed.",
-        "expected_passed": true,
-        "expected_tracking_passed": false,
-        "expected_status_passed": true
+        "expected_verdict": "pass",
+        "expected_tracking_verdict": "fail",
+        "expected_status_verdict": "pass"
       },
       {
         "response_id": "F",
         "text": "Your refund has failed.",
-        "expected_passed": true,
-        "expected_tracking_passed": false,
-        "expected_status_passed": false
+        "expected_verdict": "pass",
+        "expected_tracking_verdict": "fail",
+        "expected_status_verdict": "fail"
       }
     ]
   },
@@ -74,23 +74,23 @@
       {
         "response_id": "A",
         "text": "Your refund is still being processed. Check Orders → Refunds.",
-        "expected_passed": true,
-        "expected_tracking_passed": true,
-        "expected_status_passed": false
+        "expected_verdict": "pass",
+        "expected_tracking_verdict": "pass",
+        "expected_status_verdict": "fail"
       },
       {
         "response_id": "B",
         "text": "Your refund was completed on November 10, 2026. Check Orders → Refunds.",
-        "expected_passed": true,
-        "expected_tracking_passed": true,
-        "expected_status_passed": true
+        "expected_verdict": "pass",
+        "expected_tracking_verdict": "pass",
+        "expected_status_verdict": "pass"
       },
       {
         "response_id": "C",
         "text": "Your refund has failed. Check Orders → Refunds.",
-        "expected_passed": true,
-        "expected_tracking_passed": true,
-        "expected_status_passed": false
+        "expected_verdict": "pass",
+        "expected_tracking_verdict": "pass",
+        "expected_status_verdict": "fail"
       }
     ]
   },
@@ -111,37 +111,37 @@
       {
         "response_id": "A",
         "text": "Your refund has failed. You can review its status under Orders → Refunds.",
-        "expected_passed": true,
-        "expected_tracking_passed": true,
-        "expected_status_passed": true
+        "expected_verdict": "pass",
+        "expected_tracking_verdict": "pass",
+        "expected_status_verdict": "pass"
       },
       {
         "response_id": "B",
         "text": "Your refund is still being processed. Check Orders → Refunds.",
-        "expected_passed": true,
-        "expected_tracking_passed": true,
-        "expected_status_passed": false
+        "expected_verdict": "pass",
+        "expected_tracking_verdict": "pass",
+        "expected_status_verdict": "fail"
       },
       {
         "response_id": "C",
         "text": "Your refund has been completed. Check Orders → Refunds.",
-        "expected_passed": true,
-        "expected_tracking_passed": true,
-        "expected_status_passed": false
+        "expected_verdict": "pass",
+        "expected_tracking_verdict": "pass",
+        "expected_status_verdict": "fail"
       },
       {
         "response_id": "D",
         "text": "Your refund has failed. It will arrive tomorrow. Check Orders → Refunds.",
-        "expected_passed": false,
-        "expected_tracking_passed": true,
-        "expected_status_passed": true
+        "expected_verdict": "unknown",
+        "expected_tracking_verdict": "pass",
+        "expected_status_verdict": "pass"
       },
       {
         "response_id": "E",
         "text": "Your refund has failed. You can expect your money within 48 hours. Check Orders → Refunds.",
-        "expected_passed": false,
-        "expected_tracking_passed": true,
-        "expected_status_passed": true
+        "expected_verdict": "unknown",
+        "expected_tracking_verdict": "pass",
+        "expected_status_verdict": "pass"
       }
     ]
   },
@@ -162,9 +162,9 @@
       {
         "response_id": "A",
         "text": "Your refund is expected to reach your bank by the end of this week.",
-        "expected_passed": false,
-        "expected_tracking_passed": false,
-        "expected_status_passed": false
+        "expected_verdict": "unknown",
+        "expected_tracking_verdict": "fail",
+        "expected_status_verdict": "unknown"
       }
     ]
   },
@@ -185,9 +185,16 @@
       {
         "response_id": "A",
         "text": "Your refund is still being processed. It is expected to reach your bank on November 20, 2026. Check Orders → Refunds.",
-        "expected_passed": true,
-        "expected_tracking_passed": true,
-        "expected_status_passed": true
+        "expected_verdict": "pass",
+        "expected_tracking_verdict": "pass",
+        "expected_status_verdict": "pass"
+      },
+      {
+        "response_id": "B",
+        "text": "Your refund is still being processed. It is expected to reach your bank on November 22, 2026. Check Orders → Refunds.",
+        "expected_verdict": "fail",
+        "expected_tracking_verdict": "pass",
+        "expected_status_verdict": "pass"
       }
     ]
   },
@@ -208,23 +215,23 @@
       {
         "response_id": "A",
         "text": "Your refund was completed on November 10, 2026. Check Orders → Refunds.",
-        "expected_passed": true,
-        "expected_tracking_passed": true,
-        "expected_status_passed": true
+        "expected_verdict": "pass",
+        "expected_tracking_verdict": "pass",
+        "expected_status_verdict": "pass"
       },
       {
         "response_id": "B",
         "text": "Your refund was completed on November 10, 2026, and will reach your bank on November 10, 2026. Check Orders → Refunds.",
-        "expected_passed": false,
-        "expected_tracking_passed": true,
-        "expected_status_passed": true
+        "expected_verdict": "unknown",
+        "expected_tracking_verdict": "pass",
+        "expected_status_verdict": "pass"
       },
       {
         "response_id": "C",
         "text": "Your refund was completed on November 10, 2026, and your money will reach your bank within 48 hours. Check Orders → Refunds.",
-        "expected_passed": false,
-        "expected_tracking_passed": true,
-        "expected_status_passed": true
+        "expected_verdict": "unknown",
+        "expected_tracking_verdict": "pass",
+        "expected_status_verdict": "pass"
       }
     ]
   }

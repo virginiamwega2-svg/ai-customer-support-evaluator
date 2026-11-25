@@ -489,7 +489,7 @@ for (const scenario of dataset) {
           scenario.context
         );
 
-        assert.equal(result.passed, response.expected_passed);
+        assert.equal(result.verdict, response.expected_verdict);
       }
     );
 
@@ -502,8 +502,8 @@ for (const scenario of dataset) {
         );
 
         assert.equal(
-          result.passed,
-          response.expected_tracking_passed
+          result.verdict,
+          response.expected_tracking_verdict
         );
       }
     );
@@ -517,8 +517,8 @@ for (const scenario of dataset) {
         );
 
         assert.equal(
-          result.passed,
-          response.expected_status_passed
+          result.verdict,
+          response.expected_status_verdict
         );
       }
     );
