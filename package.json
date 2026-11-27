@@ -6,7 +6,8 @@
   "scripts": {
     "test": "node --test",
     "benchmark": "node benchmark.js",
-    "llm-benchmark": "node --env-file=.env llm-benchmark.js"
+    "llm-benchmark": "node --env-file=.env llm-benchmark.js",
+    "dashboard": "node dashboard-server.js"
   },
   "devDependencies": {
     "ajv": "^8.20.0"

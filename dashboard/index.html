@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="A deterministic AI customer-support evaluation dashboard.">
+  <title>Support Evaluator | Evaluation Dashboard</title>
+  <link rel="stylesheet" href="/styles.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar" aria-label="Main navigation">
+      <a class="brand" href="/" aria-label="Support Evaluator home">
+        <span class="brand-mark">SE</span>
+        <span>Support Evaluator</span>
+      </a>
+
+      <div class="sidebar-section">
+        <p class="nav-heading">WORKSPACE</p>
+        <a class="nav-link active" href="#overview" aria-current="page">
+          <span aria-hidden="true">◫</span> Overview
+        </a>
+        <a class="nav-link" href="#scenarios">
+          <span aria-hidden="true">▤</span> Scenarios
+        </a>
+        <a class="nav-link" href="#results">
+          <span aria-hidden="true">◎</span> Evaluation results
+        </a>
+      </div>
+
+      <div class="sidebar-footer">
+        <span class="status-dot" aria-hidden="true"></span>
+        <span>Local evaluation environment</span>
+      </div>
+    </aside>
+
+    <main class="main-content">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">AI QUALITY / MEASUREMENT</p>
+          <h1>Evaluation dashboard</h1>
+        </div>
+        <div class="topbar-meta">
+          <span class="environment-label">LOCAL</span>
+          <span class="deterministic-label">Deterministic evaluation</span>
+        </div>
+      </header>
+
+      <section class="toolbar" aria-label="Dashboard controls">
+        <div>
+          <label for="dataset-select">Evaluation dataset</label>
+          <select id="dataset-select">
+            <option value="development">Development dataset</option>
+            <option value="heldout">Held-out dataset</option>
+          </select>
+        </div>
+        <p id="dataset-description" class="muted">Loading dataset information…</p>
+      </section>
+
+      <section id="overview" class="dashboard-section" aria-labelledby="overview-title">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">AT A GLANCE</p>
+            <h2 id="overview-title">Evaluation overview</h2>
+          </div>
+          <span id="evaluation-status" class="status-label">Loading</span>
+        </div>
+
+        <div id="overview-metrics" class="metric-grid" aria-live="polite">
+          <p class="loading-message">Loading evaluation metrics…</p>
+        </div>
+      </section>
+
+      <section id="results" class="dashboard-section" aria-labelledby="results-title">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">MEASUREMENT</p>
+            <h2 id="results-title">Evaluation dimensions</h2>
+          </div>
+        </div>
+        <div id="dimension-results" class="dimension-grid">
+          <p class="loading-message">Loading dimension results…</p>
+        </div>
+      </section>
+
+      <section id="scenarios" class="dashboard-section" aria-labelledby="scenarios-title">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">INSPECTION</p>
+            <h2 id="scenarios-title">Scenario explorer</h2>
+          </div>
+          <label class="scenario-filter">
+            <span class="visually-hidden">Filter scenarios</span>
+            <input id="scenario-search" type="search" placeholder="Search scenarios…">
+          </label>
+        </div>
+        <div class="scenario-layout">
+          <div id="scenario-list" class="scenario-list" aria-label="Scenarios">
+            <p class="loading-message">Loading scenarios…</p>
+          </div>
+          <div id="scenario-detail" class="scenario-detail" aria-live="polite">
+            <p class="loading-message">Select a scenario to inspect its responses.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="notice-section" aria-labelledby="evaluation-limits-title">
+        <div class="notice-icon" aria-hidden="true">i</div>
+        <div>
+          <h2 id="evaluation-limits-title">Evaluation scope</h2>
+          <p id="llm-status">Live LLM-as-a-Judge results are not included in this dashboard.</p>
+          <p class="muted">Deterministic results are measured against the labels in the selected dataset. They do not establish general performance beyond these examples.</p>
+        </div>
+      </section>
+
+      <footer class="page-footer">
+        <span>Support Evaluator</span>
+        <span>Local-first · Evidence-aware · Deterministic</span>
+      </footer>
+    </main>
+  </div>
+</body>
+</html>

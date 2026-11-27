@@ -10,7 +10,7 @@ The system evaluates AI-generated customer-support responses against verified bu
 
 The project focuses on identifying unsupported refund promises, incorrect tracking instructions, and contradictions between an AI-generated response and a customer's verified refund status.
 
-It demonstrates how evaluation systems can combine deterministic checks, structured LLM judgments, evidence traceability, measurement, and reliability safeguards.
+It demonstrates how evaluation systems can combine deterministic checks, structured LLM judgments, evidence traceability, measurement, reliability safeguards, and an interactive evaluation dashboard.
 
 ## Why this project exists
 
@@ -75,7 +75,11 @@ ai-customer-support-evaluator/
 ├── .env.example
 ├── .gitignore
 ├── benchmark.js
+├── benchmark-engine.js
+├── benchmark-engine.test.js
 ├── benchmark-errors.js
+├── dashboard-server.js
+├── dashboard-server.test.js
 ├── customer-support-dataset.json
 ├── customer-support-heldout.json
 ├── customer-support-evaluator.js
@@ -90,6 +94,10 @@ ai-customer-support-evaluator/
 ├── llm-judge-input.test.js
 ├── llm-judge-schema.test.js
 ├── validate-llm-judge-schema.js
+├── dashboard/
+│   ├── index.html
+│   ├── styles.css
+│   └── app.js
 ├── prompts/
 │   └── llm-judge-v1.md
 ├── schemas/
@@ -108,6 +116,8 @@ The project uses:
 
 - **OpenAI SDK:** communicates with the OpenAI Responses API for optional LLM-as-a-Judge evaluation.
 - **AJV:** validates structured LLM judge output against a JSON Schema.
+- **Node.js built-in HTTP server:** serves the local evaluation dashboard without an additional web framework.
+- **Node.js built-in test runner:** runs the automated test suite.
 
 ## Getting started
 
@@ -130,7 +140,7 @@ Run the automated tests:
 npm test
 ```
 
-The deterministic evaluator and its benchmark can run without an OpenAI API key.
+The deterministic evaluator, benchmarks, and dashboard can run without an OpenAI API key.
 
 ## Evaluation datasets
 
@@ -164,7 +174,7 @@ Invalid dataset structures are rejected before benchmark evaluation proceeds.
 
 ## Automated testing
 
-The current test suite contains **178 automated tests**.
+The test suite contains **188 automated tests**, including the existing evaluator and reliability tests, benchmark-engine tests, and dashboard server tests.
 
 Coverage includes:
 
@@ -184,11 +194,29 @@ Coverage includes:
 - Request timeout and cancellation handling.
 - Live benchmark CLI safeguards and response limits.
 - Sanitization of API errors to avoid exposing sensitive details.
+- Development and held-out benchmark calculations.
+- Response-level expected and actual verdicts.
+- Invalid benchmark dataset rejection.
+- Dashboard API responses and dataset selection.
+- Dashboard static asset delivery.
+- Invalid dataset, unknown route, and unsupported HTTP method handling.
 
 Run the test suite:
 
 ```bash
 npm test
+```
+
+Run only the dashboard server tests:
+
+```bash
+node --test dashboard-server.test.js
+```
+
+Run only the shared benchmark engine tests:
+
+```bash
+node --test benchmark-engine.test.js
 ```
 
 ## Benchmarking and measurement
@@ -246,6 +274,85 @@ These results demonstrate agreement on the evaluated examples. They do not estab
 
 The held-out dataset is particularly small, so its results should be interpreted cautiously.
 
+## Evaluation dashboard
+
+The project includes a local browser-based dashboard for inspecting deterministic evaluation results.
+
+The dashboard uses:
+
+- Vanilla HTML, CSS, and JavaScript.
+- A small Node.js HTTP server.
+- The shared benchmark engine used by the command-line benchmark.
+- The existing development and held-out datasets.
+
+No additional frontend framework, database, authentication system, or cloud service is required.
+
+### Starting the dashboard
+
+Run:
+
+```bash
+npm run dashboard
+```
+
+The server starts locally at:
+
+```text
+http://127.0.0.1:3000
+```
+
+Open that address in a browser to access the dashboard.
+
+Keep the terminal running while using the dashboard. Stop the server with `Ctrl+C`.
+
+### Dashboard capabilities
+
+The dashboard provides:
+
+- **Overview:** scenario counts, response counts, verdict agreement, and unknown verdicts.
+- **Dataset selection:** switch between development and held-out datasets.
+- **Evaluation dimensions:** inspect exact accuracy, coverage, abstention, verdict counts, and confusion matrices.
+- **Scenario explorer:** search and select individual evaluation scenarios.
+- **Context inspection:** view customer messages, verified business context, expected behaviour, and reference answers where available.
+- **Response inspection:** compare candidate responses with their expected and actual verdicts.
+- **Evidence inspection:** examine evaluator explanations and available structured evidence.
+- **Evaluation scope:** distinguish deterministic results from unavailable live LLM results.
+
+### Dashboard API
+
+The dashboard server exposes the following local endpoint:
+
+```text
+GET /api/benchmark
+```
+
+The development dataset is used by default.
+
+To select the held-out dataset:
+
+```text
+GET /api/benchmark?dataset=heldout
+```
+
+Supported datasets are:
+
+- `development`
+- `heldout`
+
+Invalid dataset names are rejected.
+
+The API returns deterministic benchmark results and explicitly identifies live LLM evaluation results as unavailable.
+
+### Evaluation scope and limitations
+
+The dashboard does not make OpenAI API calls.
+
+It displays deterministic evaluation results produced by the shared benchmark engine. It does not claim that live LLM-as-a-Judge evaluation has been completed or that LLM results are available.
+
+This separation keeps the dashboard useful for local inspection and measurement without requiring API credits or exposing API credentials.
+
+The server uses a dataset whitelist and a static-file whitelist, and rejects unsupported HTTP methods.
+
 ## Technical approach
 
 ### Deterministic evaluation
@@ -261,6 +368,10 @@ evaluateRefundStatus(response, context)
 ```
 
 Each function returns a structured result containing a verdict and an explanation. Evidence records support traceability for relevant decisions.
+
+The shared benchmark engine in `benchmark-engine.js` runs these evaluation functions against a validated dataset and produces both aggregate metrics and response-level results.
+
+The command-line benchmark and dashboard reuse this engine. This avoids maintaining separate evaluation logic for different interfaces.
 
 The benchmark compares actual verdicts with expected dataset labels and reports results separately for each evaluation dimension.
 
@@ -312,4 +423,47 @@ The schema enforces the expected structure and allowed verdicts. It does not ind
 The LLM judge's evidence quotations are checked against the supplied input.
 
 - Response evidence must be an exact substring of the candidate response.
-- Context evidence must match a supplied context value or its corresponding field
+- Context evidence must match a supplied context value or its corresponding field.
+- Missing or unsupported evidence is not treated as verified evidence.
+- Fabricated quotations are rejected rather than silently accepted.
+
+These checks improve traceability but do not independently establish that every model-generated explanation is correct.
+
+### Reliability and error handling
+
+The project includes safeguards for unreliable or incomplete LLM evaluation requests.
+
+These include:
+
+- Request timeout and cancellation support.
+- Validation of request options.
+- Rejection of refusals and incomplete API responses.
+- Structured output validation.
+- Evidence quotation verification.
+- Sanitized error messages that avoid exposing raw API error details.
+- Explicit live benchmark safeguards and response limits.
+
+LLM evaluation errors remain distinct from valid `unknown` evaluation verdicts.
+
+### Benchmark integrity
+
+The development and held-out datasets are kept separate.
+
+The expected labels are used for benchmark measurement but are excluded from the LLM judge's input.
+
+The project reports exact agreement, coverage, abstention, and binary classification metrics separately. This makes it possible to inspect both evaluator decisions and situations where the evaluator appropriately abstains.
+
+The current datasets are small and manually constructed. The results should be interpreted as evidence of implementation behaviour on these examples, not as proof of generalisation to production customer-support traffic.
+
+## Future improvements
+
+Potential next steps include:
+
+- Expanding the held-out dataset with independently reviewed scenarios.
+- Adding human-reviewed evaluation labels.
+- Comparing deterministic and LLM judge decisions using a larger benchmark.
+- Measuring evaluator performance across additional customer-support dimensions.
+- Adding persisted evaluation reports and historical comparisons.
+- Introducing production-oriented observability and evaluation workflows.
+
+These improvements should be supported by additional test data and measurable acceptance criteria.
