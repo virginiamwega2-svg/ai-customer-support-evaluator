@@ -1,8 +1,16 @@
 # AI Customer Support Response Evaluator
 
-An AI customer-support response evaluation project combining deterministic rule-based checks with an optional LLM-as-a-Judge evaluator. Both approaches assess AI-generated responses against verified business context across three evaluation dimensions.
+An AI customer-support response evaluation project combining deterministic rule-based checks with an optional LLM-as-a-Judge evaluator.
 
-The project focuses on identifying unsupported refund promises, incorrect tracking instructions, and contradictions between an AI response and a customer's verified refund status.
+The system evaluates AI-generated customer-support responses against verified business context across three dimensions:
+
+1. Refund promise accuracy
+2. Tracking instruction accuracy
+3. Refund status consistency
+
+The project focuses on identifying unsupported refund promises, incorrect tracking instructions, and contradictions between an AI-generated response and a customer's verified refund status.
+
+It demonstrates how evaluation systems can combine deterministic checks, structured LLM judgments, evidence traceability, measurement, and reliability safeguards.
 
 ## Why this project exists
 
@@ -10,11 +18,9 @@ AI-generated customer-support responses can sound convincing while providing ina
 
 For example, an AI assistant might promise that a refund will arrive within 48 hours even though the business has not confirmed a payout date.
 
-This project demonstrates how structured evaluation can help identify specific customer-support errors, preserve evidence for decisions, and distinguish between confirmed errors and situations where the available evidence is insufficient.
+This project explores how structured evaluation can identify these errors, preserve supporting evidence, and distinguish between confirmed problems and situations where the available information is insufficient.
 
 ## Evaluation dimensions
-
-The project evaluates three dimensions:
 
 ### 1. Refund promise accuracy
 
@@ -26,11 +32,11 @@ Checks whether a response:
 - Gives a refund completion or arrival date that conflicts with verified information.
 - Contains an impossible calendar date connected to a refund claim.
 
-Refund completion dates and bank payout arrival dates are treated as separate pieces of information. A confirmed completion date does not, by itself, verify when money will arrive in a customer's bank account.
+Refund completion dates and bank payout arrival dates are treated as separate pieces of information. A confirmed refund completion date does not, by itself, establish when money will arrive in a customer's bank account.
 
 ### 2. Tracking instruction accuracy
 
-Checks whether the response includes the verified refund tracking path in the correct order.
+Checks whether a response includes the verified refund tracking path in the correct order.
 
 Example:
 
@@ -52,11 +58,15 @@ For example, a response describing a processing refund as completed should fail 
 
 Each evaluation dimension returns one of three verdicts:
 
-- `pass`: the response is supported by the verified business context.
-- `fail`: the response contains an identified contradiction or unsupported claim.
-- `unknown`: the evaluation completed, but the available evidence is insufficient for a definitive decision.
+| Verdict | Meaning |
+|---|---|
+| `pass` | The response is supported by the verified business context. |
+| `fail` | The response contains an identified contradiction or unsupported claim. |
+| `unknown` | Evaluation completed, but the available evidence is insufficient for a definitive decision. |
 
-An `unknown` verdict is an intentional abstention. It is different from an evaluation error: an API failure or invalid output means the evaluation did not complete successfully.
+An `unknown` verdict is an intentional abstention. It is not the same as an evaluation error.
+
+An API failure, refusal, incomplete response, or invalid output means the evaluation did not complete successfully. Such failures are handled separately rather than being silently converted into `unknown`.
 
 ## Project structure
 
@@ -65,11 +75,15 @@ ai-customer-support-evaluator/
 ├── .env.example
 ├── .gitignore
 ├── benchmark.js
+├── benchmark-errors.js
 ├── customer-support-dataset.json
 ├── customer-support-heldout.json
 ├── customer-support-evaluator.js
 ├── customer-support-evaluator.test.js
+├── dataset-validation.js
+├── dataset-validation.test.js
 ├── llm-benchmark.js
+├── llm-benchmark.test.js
 ├── llm-judge.js
 ├── llm-judge.test.js
 ├── llm-judge-input.js
@@ -95,8 +109,6 @@ The project uses:
 - **OpenAI SDK:** communicates with the OpenAI Responses API for optional LLM-as-a-Judge evaluation.
 - **AJV:** validates structured LLM judge output against a JSON Schema.
 
-Install the dependencies using `npm install`.
-
 ## Getting started
 
 Clone the repository:
@@ -118,24 +130,41 @@ Run the automated tests:
 npm test
 ```
 
-The deterministic evaluator and its benchmark can be used without configuring an OpenAI API key.
+The deterministic evaluator and its benchmark can run without an OpenAI API key.
 
 ## Evaluation datasets
 
-The project uses two separate datasets:
+The project uses two separate datasets.
 
-- **Development dataset:** 6 scenarios containing 20 candidate responses.
-- **Held-out dataset:** 3 separate scenarios containing 3 candidate responses.
+| Dataset | Scenarios | Candidate responses |
+|---|---:|---:|
+| Development | 6 | 20 |
+| Held-out | 3 | 3 |
 
 The held-out examples are kept separate from the development dataset to provide an additional check against examples not used during evaluator development.
 
 Each candidate response has an expected verdict for all three evaluation dimensions.
 
-The expected labels are used by the benchmark to measure agreement with the evaluator's decisions. They are not supplied to the LLM judge during evaluation.
+The expected labels are used by the benchmark to measure agreement with evaluator decisions. They are not supplied to the LLM judge during evaluation.
+
+### Dataset validation
+
+Both deterministic and LLM benchmark workflows validate their input datasets before evaluation.
+
+Validation checks include:
+
+- Non-empty datasets and response collections.
+- Required scenario and response fields.
+- Valid refund statuses and calendar dates.
+- Valid expected verdicts.
+- Unique scenario identifiers.
+- Unique response identifiers within each scenario.
+
+Invalid dataset structures are rejected before benchmark evaluation proceeds.
 
 ## Automated testing
 
-The current test suite contains **154 automated tests**.
+The current test suite contains **178 automated tests**.
 
 Coverage includes:
 
@@ -148,8 +177,13 @@ Coverage includes:
 - Dataset-driven scenario evaluation.
 - LLM judge input validation.
 - Strict structured output schema validation.
-- API refusal, incomplete response and error handling.
+- API refusal, incomplete response, and error handling.
 - Separation of token usage metadata from structured verdicts.
+- Dataset structure, required fields, and identifier validation.
+- Exact verification of LLM response and context evidence quotations.
+- Request timeout and cancellation handling.
+- Live benchmark CLI safeguards and response limits.
+- Sanitization of API errors to avoid exposing sensitive details.
 
 Run the test suite:
 
@@ -176,40 +210,61 @@ node benchmark.js --heldout
 The benchmark reports:
 
 - Three-way exact verdict accuracy.
-- Binary confusion matrices, precision, recall, F1 and accuracy.
+- Binary confusion matrices.
+- Precision, recall, F1, and accuracy.
 - Coverage and abstention rate.
-- Correct, unnecessary and missed abstentions.
+- Correct, unnecessary, and missed abstentions.
 - Results for each evaluation dimension.
 
-Binary classification metrics are calculated only for cases where both the expected and actual verdicts are definitive (`pass` or `fail`). `unknown` is treated as an abstention, not as a binary class.
+Binary classification metrics are calculated only when both expected and actual verdicts are definitive (`pass` or `fail`).
+
+An `unknown` verdict is treated as an abstention, not as a binary classification.
 
 Coverage measures the proportion of responses receiving a definitive verdict. Abstention rate measures the proportion receiving `unknown`.
 
 ### Current deterministic benchmark results
 
-The current development dataset produces 60 matching verdicts across 60 dimension-level evaluations.
+The current development dataset produces:
 
-The held-out dataset produces 9 matching verdicts across 9 dimension-level evaluations.
+- 60 matching verdicts across 60 dimension-level evaluations.
+- No observed verdict disagreements.
 
-No verdict disagreements were observed in either dataset.
+The held-out dataset produces:
 
-These results demonstrate agreement on the evaluated examples. They do not establish real-world accuracy, production readiness or broad generalisation. The held-out dataset is particularly small.
+- 9 matching verdicts across 9 dimension-level evaluations.
+- No observed verdict disagreements.
+
+Development dataset coverage and abstention:
+
+| Dimension | Exact accuracy | Coverage | Abstention |
+|---|---:|---:|---:|
+| Refund promise | 100% | 65% | 35% |
+| Tracking instructions | 100% | 100% | 0% |
+| Refund status | 100% | 85% | 15% |
+
+These results demonstrate agreement on the evaluated examples. They do not establish real-world accuracy, production readiness, or broad generalisation.
+
+The held-out dataset is particularly small, so its results should be interpreted cautiously.
 
 ## Technical approach
+
+### Deterministic evaluation
 
 The deterministic evaluator uses JavaScript rules and regular-expression-based checks against supplied verified business context.
 
 The three main evaluation functions are:
 
-- `evaluateRefundPromise(response, context)`
-- `evaluateTrackingInstruction(response, context)`
-- `evaluateRefundStatus(response, context)`
+```javascript
+evaluateRefundPromise(response, context)
+evaluateTrackingInstruction(response, context)
+evaluateRefundStatus(response, context)
+```
 
-Each dimension returns a structured result with a verdict and an explanation. Evidence records support traceability for relevant decisions.
+Each function returns a structured result containing a verdict and an explanation. Evidence records support traceability for relevant decisions.
 
-The benchmark compares actual verdicts with expected dataset labels and reports results separately for each dimension.
+The benchmark compares actual verdicts with expected dataset labels and reports results separately for each evaluation dimension.
 
-## LLM-as-a-Judge evaluation
+### LLM-as-a-Judge evaluation
 
 The project also includes an optional LLM-as-a-Judge evaluator using the OpenAI Responses API.
 
@@ -217,8 +272,10 @@ The LLM judge independently evaluates the same three dimensions as the determini
 
 The two approaches have different responsibilities:
 
-- **Deterministic evaluator:** applies explicit rules to verifiable claims, dates, tracking paths and refund status.
-- **LLM judge:** interprets language and context, including paraphrased claims, and provides structured reasoning and supporting evidence.
+| Evaluator | Responsibility |
+|---|---|
+| Deterministic evaluator | Applies explicit rules to verifiable claims, dates, tracking paths, and refund status. |
+| LLM judge | Interprets language and context, including paraphrased claims, and provides structured reasoning and supporting evidence. |
 
 The LLM judge receives only:
 
@@ -226,13 +283,15 @@ The LLM judge receives only:
 - Verified business context.
 - Candidate response.
 
-It does not receive expected dataset labels, reference answers or scenario-specific expected behaviour. This helps prevent benchmark-label leakage into its decisions.
+It does not receive expected dataset labels, reference answers, or scenario-specific expected behaviour. This helps prevent benchmark-label leakage into its decisions.
+
+The two evaluators retain separate verdicts. An LLM judgment does not silently replace a deterministic result.
 
 ### Structured output
 
 The LLM judge returns a strict JSON object containing:
 
-- A `pass`, `fail` or `unknown` verdict for each dimension.
+- A `pass`, `fail`, or `unknown` verdict for each dimension.
 - A concise explanation for each verdict.
 - Supporting response evidence and verified context evidence where available.
 
@@ -240,95 +299,17 @@ The output is validated against:
 
 `schemas/llm-judge-output.schema.json`
 
-AJV is used for schema validation. The versioned evaluation instructions are maintained in:
+AJV is used for schema validation.
+
+The versioned evaluation instructions are maintained in:
 
 `prompts/llm-judge-v1.md`
 
 The schema enforces the expected structure and allowed verdicts. It does not independently prove that the model's reasoning or evidence is factually correct.
 
-API failures, incomplete responses, refusals and invalid outputs are treated as evaluation errors, not as `unknown` verdicts.
+### Evidence integrity
 
-### LLM judge configuration
+The LLM judge's evidence quotations are checked against the supplied input.
 
-The optional LLM judge requires an OpenAI API key and a model name.
-
-Copy `.env.example` to `.env` and configure:
-
-```text
-OPENAI_API_KEY=your_api_key
-OPENAI_JUDGE_MODEL=your_model_name
-```
-
-Keep `.env` private. It is excluded from version control.
-
-### Running the LLM benchmark
-
-Live evaluation requires an available OpenAI API balance and explicit approval through the `--live` flag.
-
-Evaluate one development response:
-
-```bash
-npm run llm-benchmark -- --live --limit 1
-```
-
-Evaluate the held-out dataset:
-
-```bash
-npm run llm-benchmark -- --live --heldout
-```
-
-The `--limit` option restricts the number of candidate responses evaluated.
-
-The benchmark measures:
-
-- Exact agreement with expected verdicts.
-- Disagreements for each evaluation dimension.
-- Total and average evaluation latency.
-- Input, output and total token usage when available.
-
-The live-evaluation guard prevents accidental API usage when the `--live` flag is omitted. Invalid command-line arguments and limits are rejected before evaluation begins.
-
-### Current LLM evaluation status
-
-The LLM judge integration, structured output validation and mocked API tests are implemented.
-
-Live model evaluation has not yet been completed because API credits were unavailable during development.
-
-Mocked tests verify input handling, output structure, token usage handling and API failure behaviour. They do not establish the model's actual evaluation quality.
-
-No live LLM accuracy, agreement or reliability results are currently claimed.
-
-## Limitations
-
-This project is an evaluation prototype, not a production customer-support system.
-
-- The deterministic evaluator relies on predefined text patterns and rules rather than broad semantic language understanding.
-- It may not recognize every possible wording or interpretation of a customer-support response.
-- The project does not currently evaluate empathy, tone, completeness or overall helpfulness.
-- It does not connect to live refund, payment or tracking systems.
-- The development dataset contains only 6 scenarios and 20 candidate responses.
-- The held-out dataset contains only 3 scenarios and 3 candidate responses. This is too small to establish broad generalisation.
-- The scenarios and expected verdicts are manually constructed; benchmark results depend on the quality of those labels and the supplied business context.
-- The deterministic benchmark results are not evidence of production performance or real-world customer outcomes.
-- The LLM judge has not yet undergone live model evaluation or independent human-reviewed quality assessment.
-- Structured output validation does not guarantee factual correctness or sound reasoning.
-- The project does not yet include a dashboard or historical evaluation interface.
-
-These limitations define areas for further reliability, measurement and usability work.
-
-## Future improvements
-
-Potential next steps include:
-
-- Expanding the development and held-out datasets with more realistic customer-support scenarios.
-- Completing live LLM judge evaluation when API access is available.
-- Comparing deterministic and LLM judge disagreements through evidence-based review.
-- Introducing human-reviewed assessments to evaluate judge reliability.
-- Measuring model consistency, latency and cost across repeated evaluations.
-- Strengthening reliability, privacy and failure-handling tests.
-- Building an evaluation dashboard for metrics, scenario exploration and evidence inspection.
-- Improving setup instructions, examples and developer documentation.
-
-## License
-
-License not yet specified.
+- Response evidence must be an exact substring of the candidate response.
+- Context evidence must match a supplied context value or its corresponding field

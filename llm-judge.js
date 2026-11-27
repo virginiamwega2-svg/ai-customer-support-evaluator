@@ -1,4 +1,3 @@
-
 import OpenAI from "openai";
 import Ajv2020 from "ajv/dist/2020.js";
 import fs from "node:fs";
@@ -20,6 +19,36 @@ const schema = JSON.parse(
 const ajv = new Ajv2020({ strict: true });
 const validate = ajv.compile(schema);
 
+
+function validateEvidence(result, preparedInput) {
+  for (const [dimension, evaluation] of Object.entries(result)) {
+    if (
+      evaluation.response_evidence !== null &&
+      !preparedInput.candidate_response.includes(evaluation.response_evidence)
+    ) {
+      throw new Error(
+        `LLM judge returned unverified response evidence for ${dimension}.`
+      );
+    }
+
+    if (evaluation.context_evidence !== null) {
+      const verified = Object.entries(preparedInput.context).some(
+        ([field, value]) =>
+          typeof value === "string" &&
+          (
+            evaluation.context_evidence === value ||
+            evaluation.context_evidence === `${field}: ${value}`
+          )
+      );
+
+      if (!verified) {
+        throw new Error(
+          `LLM judge returned unverified context evidence for ${dimension}.`
+        );
+      }
+    }
+  }
+}
 export async function evaluateWithLLM(input, options = {}) {
   const preparedInput = prepareJudgeInput(input);
 
@@ -31,6 +60,21 @@ export async function evaluateWithLLM(input, options = {}) {
 
   if (!model) {
     throw new Error("OPENAI_JUDGE_MODEL is not configured.");
+  }
+
+
+  const requestOptions = {};
+
+  if (options.timeoutMs !== undefined) {
+    if (!Number.isFinite(options.timeoutMs) || options.timeoutMs <= 0) {
+      throw new Error("timeoutMs must be a positive finite number.");
+    }
+
+    requestOptions.timeout = options.timeoutMs;
+  }
+
+  if (options.signal !== undefined) {
+    requestOptions.signal = options.signal;
   }
 
   const client = options.client ?? new OpenAI({
@@ -49,7 +93,7 @@ export async function evaluateWithLLM(input, options = {}) {
         schema
       }
     }
-  });
+  }, requestOptions);
 
   if (response.status === "incomplete") {
     throw new Error(
@@ -89,6 +133,8 @@ export async function evaluateWithLLM(input, options = {}) {
       `LLM judge output failed schema validation: ${ajv.errorsText(validate.errors)}`
     );
   }
+
+  validateEvidence(result, preparedInput);
 
   Object.defineProperty(result, "usage", {
     value: response.usage,

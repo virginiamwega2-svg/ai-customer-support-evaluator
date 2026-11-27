@@ -13,7 +13,7 @@ const validInput = {
     payout_expected_at: null,
     payout_estimate_source: null
   },
-  candidate_response: "Your refund is being processed."
+  candidate_response: "You can check Orders → Refunds. Your refund is being processed."
 };
 
 const validResult = {
@@ -271,5 +271,115 @@ test("returns token usage separately from structured verdicts", async () => {
       refund_status: result.refund_status
     },
     validResult
+  );
+});
+
+test("passes timeout and cancellation signal to the SDK", async () => {
+  let receivedOptions;
+
+  const client = {
+    responses: {
+      create: async (body, options) => {
+        receivedOptions = options;
+        return createResponse(validResult);
+      }
+    }
+  };
+
+  const controller = new AbortController();
+
+  await evaluateWithLLM(validInput, {
+    client,
+    model: "mock-model",
+    timeoutMs: 15000,
+    signal: controller.signal
+  });
+
+  assert.equal(receivedOptions.timeout, 15000);
+  assert.equal(receivedOptions.signal, controller.signal);
+});
+
+test("rejects an invalid timeout before calling the API", async () => {
+  let apiCalled = false;
+
+  const client = {
+    responses: {
+      create: async () => {
+        apiCalled = true;
+        return createResponse(validResult);
+      }
+    }
+  };
+
+  await assert.rejects(
+    () => evaluateWithLLM(validInput, {
+      client,
+      model: "mock-model",
+      timeoutMs: 0
+    }),
+    /timeoutMs must be a positive finite number/
+  );
+
+  assert.equal(apiCalled, false);
+});
+
+test("propagates request cancellation instead of returning unknown", async () => {
+  const cancellationError = new Error("Request was cancelled");
+  cancellationError.name = "AbortError";
+
+  const client = {
+    responses: {
+      create: async () => {
+        throw cancellationError;
+      }
+    }
+  };
+
+  const controller = new AbortController();
+  controller.abort();
+
+  await assert.rejects(
+    () => evaluateWithLLM(validInput, {
+      client,
+      model: "mock-model",
+      signal: controller.signal
+    }),
+    (error) => {
+      assert.equal(error.name, "AbortError");
+      assert.equal(error.message, "Request was cancelled");
+      return true;
+    }
+  );
+});
+
+test("rejects fabricated response evidence", async () => {
+  const invalidResult = structuredClone(validResult);
+  invalidResult.refund_status.response_evidence =
+    "Your refund has been completed.";
+
+  const client = createMockClient(createResponse(invalidResult));
+
+  await assert.rejects(
+    () => evaluateWithLLM(validInput, {
+      client,
+      model: "mock-model"
+    }),
+    /unverified response evidence/
+  );
+});
+
+test("rejects fabricated context evidence", async () => {
+  const invalidResult = structuredClone(validResult);
+  invalidResult.refund_status.context_evidence =
+    "refund_status: completed";
+
+  const client = createMockClient(createResponse(invalidResult));
+
+  await assert.rejects(
+    () => evaluateWithLLM(validInput, {
+      client,
+      model: "mock-model"
+    }),
+    /unverified context evidence/
   );
 });

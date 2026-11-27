@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { validateDataset } from "./dataset-validation.js";
 
 import {
   evaluateRefundPromise,
@@ -14,6 +15,8 @@ const datasetFile = useHeldout
 const dataset = JSON.parse(
   readFileSync(new URL(datasetFile, import.meta.url), "utf8")
 );
+
+validateDataset(dataset);
 
 const dimensions = [
   {

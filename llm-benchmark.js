@@ -1,6 +1,8 @@
 import fs from "node:fs";
+import { validateDataset } from "./dataset-validation.js";
 import { performance } from "node:perf_hooks";
 import { evaluateWithLLM } from "./llm-judge.js";
+import { createSafeEvaluationError } from "./benchmark-errors.js";
 
 const args = process.argv.slice(2);
 const live = args.includes("--live");
@@ -39,6 +41,12 @@ if (!live) {
   );
 }
 
+if (limit === null) {
+  throw new Error(
+    "A response limit is required for live evaluation. Add --limit N to specify the maximum number of API requests."
+  );
+}
+
 if (!process.env.OPENAI_API_KEY || !process.env.OPENAI_JUDGE_MODEL) {
   throw new Error("OPENAI_API_KEY and OPENAI_JUDGE_MODEL must be configured.");
 }
@@ -50,6 +58,8 @@ const datasetFile = useHeldout
 const dataset = JSON.parse(
   fs.readFileSync(new URL(datasetFile, import.meta.url), "utf8")
 );
+
+validateDataset(dataset);
 
 const evaluations = dataset.flatMap((scenario) =>
   scenario.responses.map((response) => ({
@@ -115,11 +125,17 @@ console.log("Live API evaluation enabled.");
 for (const { scenario, response } of selectedEvaluations) {
   const startTime = performance.now();
 
-  const result = await evaluateWithLLM({
-    customer_message: scenario.customer_message,
-    context: scenario.context,
-    candidate_response: response.text
-  });
+  let result;
+
+  try {
+    result = await evaluateWithLLM({
+      customer_message: scenario.customer_message,
+      context: scenario.context,
+      candidate_response: response.text
+    });
+  } catch (error) {
+    throw createSafeEvaluationError(error, scenario.id, response.response_id);
+  }
 
   const latencyMs = performance.now() - startTime;
   performanceMetrics.totalLatencyMs += latencyMs;
